@@ -1,4 +1,4 @@
-/* Gym Tracker v7.2 - Exercise Memory, Load Transformer, Smart Load 4, local-first */
+/* Gym Tracker v7.3 - Exercise Memory, Protocol A/B Fix, Smart Load 4, local-first */
 /* APP_VERSION arriva da version.js, caricato prima di questo file */
 const STORAGE_KEY = 'gym_tracker_ppl_upper_lower_v1';
 const $ = (sel) => document.querySelector(sel);
@@ -225,8 +225,14 @@ function currentPreCycleStep(){
   const i=clamp(Number(state.preCycleStep)||0,0,steps.length);
   return i<steps.length?steps[i]:null;
 }
+function preCycleAppliesTo(pre,type){
+  if(!pre||!type)return false;
+  const applies=pre.appliesTo??pre.protocol??'bench_push';
+  return Array.isArray(applies)?applies.includes(type):String(applies)===String(type);
+}
+function currentPreCycleStepFor(type){ const pre=currentPreCycleStep(); return preCycleAppliesTo(pre,type)?pre:null; }
 function preCycleCount(){ const steps=activeProgram().preCycle; return Array.isArray(steps)?steps.length:0; }
-function benchProtocolInfo(week=state.currentWeek){ return currentPreCycleStep()||activeProgram().benchPlan?.[week-1]||null; }
+function benchProtocolInfo(type='bench_push',week=state.currentWeek){ return currentPreCycleStepFor(type)||activeProgram().benchPlan?.[week-1]||null; }
 function usesLegacyWeekAdaptations(){ return activeProgram().legacyWeekAdaptations===true; }
 
 function normalizeExercise(raw,index=0){
@@ -336,7 +342,7 @@ function estimateWorkout(workout,week){
 }
 
 function getBenchSets(type,week){
-  const p=activeProgram(), pre=currentPreCycleStep();
+  const p=activeProgram(), pre=currentPreCycleStepFor(type);
   let arr=[],rest=0;
   if(pre){ arr=pre.sets||[]; rest=Number(pre.restSec)||240; }
   else{
@@ -346,11 +352,11 @@ function getBenchSets(type,week){
   }
   return (arr||[]).map((item,i)=>{
     const label=Array.isArray(item)?item[0]:item.label, kg=Array.isArray(item)?item[1]:item.kg, reps=Array.isArray(item)?item[2]:item.reps;
-    const targetRpe=Number(Array.isArray(item)?item[3]:item.targetRpe)||benchRpeDefault(week);
+    const targetRpe=Number(Array.isArray(item)?item[3]:item.targetRpe)||benchRpeDefault(type,week);
     return {label:String(label??i+1),kg,recommendedKg:kg,reps,metric:'RPE',metricValue:targetRpe,targetRpe,done:false,restSec:rest,target:true};
   });
 }
-function benchRpeDefault(week){ const p=benchProtocolInfo(week); const nums=String(p?.rpe||'8').match(/\d+(?:[.,]\d+)?/g); return nums?Number(nums[0].replace(',','.')):8; }
+function benchRpeDefault(type,week){ const p=benchProtocolInfo(type,week); const nums=String(p?.rpe||'8').match(/\d+(?:[.,]\d+)?/g); return nums?Number(nums[0].replace(',','.')):8; }
 function maybeAutoregulateBench(ex,si){
   if(!ex?.special||!ex.sets?.[si]?.done)return;
   const set=ex.sets[si], label=String(set.label||'');
@@ -506,9 +512,27 @@ function startWorkout(name){
     return {...ex,targetReps:ex.reps,targetRir:ex.rir,sets,done:false,notes:'',replacement:null,loadSuggestion:sugg?{recommendedKg:sugg.next,previousKg:sugg.load,reason:sugg.reason,source:sugg.source,mode:sugg.mode,confidence:sugg.confidence,historyCount:sugg.historyCount,lastSummary:sugg.lastSummary||'',generatedAt:new Date().toISOString()}:null};
   });
   const pre=currentPreCycleStep();
-  state.currentSession={id:uid(),workout:name,week:state.currentWeek,programTitle:programTitle(),programPhase:pre?.phase||currentBenchPlan()?.phase||'',preCycleStepAtStart:pre?Number(state.preCycleStep):null,startedAt:new Date().toISOString(),exercises,estimatedMin:workout.estimatedMin,sessionRpe:'',bodyweightKg:'',notes:''};
+  const bridgeExercise=pre?exercises.find(ex=>ex.special&&preCycleAppliesTo(pre,ex.special)):null;
+  const bridgeActive=!!bridgeExercise;
+  state.currentSession={id:uid(),workout:name,week:state.currentWeek,programTitle:programTitle(),programPhase:bridgeActive?(pre?.phase||'Ponte Panca A'):(currentBenchPlan()?.phase||''),preCycleStepAtStart:bridgeActive?Number(state.preCycleStep):null,startedAt:new Date().toISOString(),exercises,estimatedMin:workout.estimatedMin,sessionRpe:'',bodyweightKg:'',notes:''};
   state.ui.view='session'; state.ui.openExercise=0; saveState(); requestWakeLock(); render();
 }
+
+function repairInvalidUpperBridgeSession(){
+  const ss=state.currentSession;if(!ss)return false;
+  const upper=(ss.exercises||[]).find(ex=>ex.special==='bench_upper');
+  if(!upper||ss.preCycleStepAtStart===null||ss.preCycleStepAtStart===undefined)return false;
+  const hasCompleted=(upper.sets||[]).some(st=>st.done);
+  ss.preCycleStepAtStart=null;
+  ss.programPhase=activeProgram().benchPlan?.[(Number(ss.week)||1)-1]?.phase||ss.programPhase||'';
+  if(!hasCompleted){
+    upper.sets=getBenchSets('bench_upper',Number(ss.week)||state.currentWeek);
+    upper.targetReps=upper.reps;
+    upper.targetRir=upper.rir;
+  }
+  return true;
+}
+
 function resumeWorkout(){ if(state.currentSession){state.ui.view='session';saveState();render();requestWakeLock();} }
 function sessionProgress(){
   const s=state.currentSession; if(!s) return {done:0,total:0,pct:0};
@@ -664,7 +688,8 @@ function finishWorkout(){
   const p=sessionProgress();
   if(p.pct<100 && !confirm(`Hai completato ${p.pct}% della sessione. Vuoi chiuderla comunque?`)) return;
   s.finishedAt=new Date().toISOString(); s.durationMin=Math.max(1,Math.round((new Date(s.finishedAt)-new Date(s.startedAt))/60000)); s.volume=totalSessionVolume(s); s.progress=p.pct;
-  const bridgeDone=s.preCycleStepAtStart!==null&&s.preCycleStepAtStart!==undefined&&(s.exercises||[]).some(ex=>ex.special&&ex.sets?.length&&ex.sets.filter(x=>x.target!==false&&!x.extra).every(x=>x.done));
+  const bridgeStep=s.preCycleStepAtStart!==null&&s.preCycleStepAtStart!==undefined?(activeProgram().preCycle?.[s.preCycleStepAtStart]||null):null;
+  const bridgeDone=!!bridgeStep&&(s.exercises||[]).some(ex=>ex.special&&preCycleAppliesTo(bridgeStep,ex.special)&&ex.sets?.length&&ex.sets.filter(x=>x.target!==false&&!x.extra).every(x=>x.done));
   if(bridgeDone&&Number(s.preCycleStepAtStart)===Number(state.preCycleStep)){ state.preCycleStep=Math.min(preCycleCount(),Number(state.preCycleStep)+1); if(state.preCycleStep>=preCycleCount()){state.currentWeek=1;state.weekStartedAt=s.finishedAt;state.pendingWeekAdvance=null;} }
   (s.exercises||[]).forEach(ex=>{if(!ex.special&&(ex.sets||[]).some(st=>st.done&&Number(st.kg)>0))upsertCatalogExercise(ex,'history');});
   state.history.unshift(s); state.currentSession=null; state.timer=null; state.ui.view='history'; saveState(); const queued=!bridgeDone?maybeQueueWeekAdvance():null; releaseWakeLock(); render(); toast(bridgeDone&&state.preCycleStep>=preCycleCount()?'Ponte completato: parte la settimana 1':queued?(queued.to?`W${queued.from} completata: W${queued.to} pronta`:'Blocco completato'):'Allenamento salvato');
@@ -862,7 +887,7 @@ function weekSelector(){ const count=programWeekCount(); if(count<=1)return''; r
 function preCycleCard(compact=false){
   const pre=currentPreCycleStep(), total=preCycleCount(); if(!pre)return'';
   const done=Number(state.preCycleStep)||0, title=`PONTE ${done+1}/${total}`;
-  return `<section class="card ${compact?'flat':''} bridge-card"><div class="row between"><span class="badge warn">${title}</span><span class="badge">${esc(pre.phase||'Preparazione')}</span></div><h3 style="margin:10px 0 6px">${esc(pre.target||'')}</h3><p class="subtle">RPE ${esc(pre.rpe||'--')} · recupero ${esc(pre.rest||'--')} · ${esc(pre.note||'')}</p><div class="row bridge-actions"><button class="chip-btn" onclick="setPreCycleStep(${done+1})">Segna completato</button><button class="chip-btn" onclick="setPreCycleStep(${total})">Salta ponte</button></div></section>`;
+  return `<section class="card ${compact?'flat':''} bridge-card"><div class="row between"><span class="badge warn">${title}</span><span class="badge">${esc(pre.phase||'Preparazione')}</span></div><h3 style="margin:10px 0 6px">${esc(pre.target||'')}</h3><p class="subtle"><b>PUSH · Protocollo A</b> · RPE ${esc(pre.rpe||'--')} · recupero ${esc(pre.rest||'--')} · ${esc(pre.note||'')}</p><p class="subtle" style="margin-top:6px">Il ponte modifica solo la Panca A del PUSH. Nell'UPPER resta sempre attivo il Protocollo B della settimana corrente.</p><div class="row bridge-actions"><button class="chip-btn" onclick="setPreCycleStep(${done+1})">Segna completato</button><button class="chip-btn" onclick="setPreCycleStep(${total})">Salta ponte</button></div></section>`;
 }
 
 function suggestionModeLabel(mode){ return mode==='increase'?'PROGRESSIONE':mode==='decrease'?'RIDUCI FATICA':mode==='recalc'?'RICALCOLO':mode==='initial'?'PARTENZA':'MANTIENI'; }
@@ -877,7 +902,7 @@ function renderHome(){
   if(state.currentSession){const p=sessionProgress();content+=`<section class="card install-banner"><div class="row between"><div><span class="badge green">SESSIONE ATTIVA</span><div class="next-name" style="margin-top:7px">${esc(state.currentSession.workout)}</div><div class="subtle">${p.done}/${p.total} blocchi · ${p.pct}% completato</div></div><button class="start" style="border:0;background:var(--accent);border-radius:14px;min-height:52px;padding:0 16px;font-weight:900" onclick="resumeWorkout()">Riprendi</button></div></section>`;}
   if(wk){
     const pre=currentPreCycleStep();
-    if(pre) content+=`<section class="card hero"><div class="row between"><span class="badge warn">PONTE ${Number(state.preCycleStep)+1}/${preCycleCount()}</span><span class="badge">${esc(pre.phase||'Preparazione')}</span></div><h1 style="margin-top:12px">${esc(programTitle())}</h1><p>${esc(pre.note||'Completa le due esposizioni ponte prima della W1.')}</p><div class="kpi-grid"><div class="kpi"><strong>${esc(pre.target||'—')}</strong><span>prossima panca</span></div><div class="kpi"><strong>${esc(pre.rest||'—')}</strong><span>recupero</span></div><div class="kpi"><strong>RPE ${esc(pre.rpe||'—')}</strong><span>target</span></div></div></section>`;
+    if(pre) content+=`<section class="card hero"><div class="row between"><span class="badge warn">PONTE ${Number(state.preCycleStep)+1}/${preCycleCount()}</span><span class="badge">${esc(pre.phase||'Preparazione')}</span></div><h1 style="margin-top:12px">${esc(programTitle())}</h1><p>${esc(pre.note||'Completa le due esposizioni ponte prima della W1.')} Il ponte si applica solo alla Panca A nel PUSH; UPPER mantiene il Protocollo B.</p><div class="kpi-grid"><div class="kpi"><strong>${esc(pre.target||'—')}</strong><span>PUSH · Panca A</span></div><div class="kpi"><strong>${esc(pre.rest||'—')}</strong><span>recupero</span></div><div class="kpi"><strong>RPE ${esc(pre.rpe||'—')}</strong><span>target</span></div></div></section>`;
     else content+=`<section class="card hero"><div class="row between"><span class="badge">SETTIMANA ${state.currentWeek}/${weeks}</span><span class="badge ${state.currentWeek>=Math.max(weeks-1,1)?'warn':'green'}">${esc(wk?.phase||'')}</span></div><h1 style="margin-top:12px">${esc(programTitle())}</h1><p>${esc(ad?.goal||programSubtitle()||'Progressione controllata')} ${ad?.note?`· ${esc(ad.note)}`:''}</p>${weekSelector()}<div class="kpi-grid"><div class="kpi"><strong>${esc(wk?.pushTop||'—')}</strong><span>Push · top set</span></div><div class="kpi"><strong>${esc(wk?.upperWork||'—')}</strong><span>Upper · fermo</span></div><div class="kpi"><strong>RPE ${esc(wk?.rpe||'—')}</strong><span>target panca</span></div></div></section>`;
   }else{
     content+=`<section class="card hero"><div class="row between"><span class="badge">${weeks>1?`SETTIMANA ${state.currentWeek}/${weeks}`:'SCHEDA ATTIVA'}</span><span class="badge green">${imported?'IMPORTATA':'PRONTA'}</span></div><h1 style="margin-top:12px">${esc(programTitle())}</h1><p>${esc(programSubtitle()||'Carichi precompilati automaticamente dallo storico quando disponibili.')}</p>${weekSelector()}<div class="kpi-grid"><div class="kpi"><strong>${programSplit().length}</strong><span>sedute nello split</span></div><div class="kpi"><strong>${state.history.length}</strong><span>sessioni nello storico</span></div><div class="kpi"><strong>AUTO</strong><span>carichi da storico</span></div></div></section>`;
@@ -893,7 +918,7 @@ function renderProgram(){
   const ad=currentAdaptation(), wk=currentBenchPlan(), imported=!!state.activeProgram;
   let c=`<section class="card"><div class="row between"><div><span class="badge">${programWeekCount()>1?`SETTIMANA ${state.currentWeek}`:'PROGRAMMA'}</span><h2 style="margin:8px 0 4px">${esc(programTitle())}</h2><div class="subtle">${esc(wk?.phase||programSubtitle()||'Carichi automatici collegati allo storico')}</div></div><span class="badge ${imported?'green':''}">${imported?'IMPORTATA':'ORIGINALE'}</span></div>${weekSelector()}</section>`;
   c+=preCycleCard();
-  for(const name of programSplit()){const w=getAdjustedWorkout(name),prev=lastWorkoutSession(name);c+=`<div class="section-title"><h2>${esc(name)}</h2><span>${prev?`ultima ${fmtDateShort(prev.startedAt)} · `:''}~${w.estimatedMin} min</span></div><section class="card flat">${w.exercises.map(ex=>{const pre=currentPreCycleStep();let target=ex.special?(pre?pre.target:(wk?(ex.special==='bench_push'?wk?.pushTop+' + '+wk?.pushBackoff:wk?.upperWork):'')):`${ex.sets?`${ex.sets} × `:''}${ex.reps}`;const sg=!ex.special&&!Array.isArray(ex.plannedSets)?suggestedLoad(ex):null;return `<div class="setting-row"><div><h4>${esc(ex.name)}</h4><p>${esc(ex.equipment)} · ${esc(target||'')}${sg?` · <span class="green">${fmtKg(sg.next)} kg · ${suggestionModeLabel(sg.mode).toLowerCase()}</span>`:''}</p></div><span class="badge ${ex.special?'green':''}">${ex.special?'PANCA':ex.restSec?fmtTime(ex.restSec):'—'}</span></div>`}).join('')}<button class="secondary-btn workout-inline-start" onclick="startWorkout(decodeURIComponent('${encodedArg(name)}'))">Avvia ${esc(name)}</button></section>`;}
+  for(const name of programSplit()){const w=getAdjustedWorkout(name),prev=lastWorkoutSession(name);c+=`<div class="section-title"><h2>${esc(name)}</h2><span>${prev?`ultima ${fmtDateShort(prev.startedAt)} · `:''}~${w.estimatedMin} min</span></div><section class="card flat">${w.exercises.map(ex=>{const bridge=ex.special?currentPreCycleStepFor(ex.special):null;let target=ex.special?(bridge?bridge.target:(wk?(ex.special==='bench_push'?wk?.pushTop+' + '+wk?.pushBackoff:wk?.upperWork):'')):`${ex.sets?`${ex.sets} × `:''}${ex.reps}`;const sg=!ex.special&&!Array.isArray(ex.plannedSets)?suggestedLoad(ex):null;return `<div class="setting-row"><div><h4>${esc(ex.name)}</h4><p>${esc(ex.equipment)} · ${esc(target||'')}${sg?` · <span class="green">${fmtKg(sg.next)} kg · ${suggestionModeLabel(sg.mode).toLowerCase()}</span>`:''}</p></div><span class="badge ${ex.special?'green':''}">${ex.special?'PANCA':ex.restSec?fmtTime(ex.restSec):'—'}</span></div>`}).join('')}<button class="secondary-btn workout-inline-start" onclick="startWorkout(decodeURIComponent('${encodedArg(name)}'))">Avvia ${esc(name)}</button></section>`;}
   if(ad)c+=`<section class="card"><b>Adattamento settimana</b><p class="subtle">Push/Upper: ${esc(ad?.pushUpper||'—')}</p><p class="subtle">Pull/Legs/Lower: ${esc(ad?.other||'—')}</p></section>`;
   return shell(c,'Scheda','programma attuale');
 }
@@ -904,7 +929,7 @@ function renderSession(){
   ss.exercises.forEach((ex,i)=>{const open=state.ui.openExercise===i;const exDone=ex.sets?.length?ex.sets.every(s=>s.done):ex.done;const sugg=ex.loadSuggestion||null;const prev=lastExerciseData(ex);const prevSets=(prev?.sets||[]).filter(s=>s.done);const showMetric=state.settings.showRir||!!ex.special;const step=loadStepFor(ex);
     c+=`<section class="card exercise-card ${exDone?'done':''} ${open?'current':''}"><div class="exercise-head" onclick="openExercise(${i})"><div><h3>${exDone?'✓ ':''}${esc(ex.name)}</h3><p>${esc(ex.equipment||'')} ${ex.replacement?`· sostituzione`:''}</p></div><span class="badge ${exDone?'green':''}">${ex.special?'PANCA':ex.sets?.length?`${ex.sets.filter(s=>s.done).length}/${ex.sets.length}`:'WARM'}</span></div>`;
     if(open){c+=`<div class="exercise-body"><div class="exercise-meta"><span class="meta-pill">Target ${esc(ex.special?benchTargetText(ex.special,ss.week):`${ex.sets||''} × ${ex.reps}`)}</span>${ex.restSec?`<span class="meta-pill">Rec ${fmtTime(ex.restSec)}</span>`:''}${showMetric&&ex.rir&&ex.rir!=='—'?`<span class="meta-pill">RIR ${esc(ex.rir)}</span>`:''}</div>`;
-      if(ex.special){const benchWeek=ss.preCycleStepAtStart!==null&&ss.preCycleStepAtStart!==undefined?(activeProgram().preCycle?.[ss.preCycleStepAtStart]||null):(activeProgram().benchPlan?.[ss.week-1]||null);c+=`<div class="card flat protocol-card"><b>${esc(benchWeek?.phase||'Panca')}</b><div class="subtle">${esc(benchWeek?.note||'')}</div></div>`;}
+      if(ex.special){const bridgeStep=ss.preCycleStepAtStart!==null&&ss.preCycleStepAtStart!==undefined?(activeProgram().preCycle?.[ss.preCycleStepAtStart]||null):null;const benchWeek=bridgeStep&&preCycleAppliesTo(bridgeStep,ex.special)?bridgeStep:(activeProgram().benchPlan?.[ss.week-1]||null);const protocolLabel=ex.special==='bench_push'?'Protocollo A':'Protocollo B';c+=`<div class="card flat protocol-card"><b>${esc(protocolLabel)} · ${esc(benchWeek?.phase||'Panca')}</b><div class="subtle">${esc(benchWeek?.note||'')}</div></div>`;}
       if(sugg){c+=`<div class="suggestion-box ${suggestionModeClass(sugg.mode)}"><div class="suggestion-top"><span class="badge">${suggestionModeLabel(sugg.mode)}</span><b>${fmtKg(sugg.recommendedKg)} kg consigliati</b></div><div>${esc(sugg.reason||'Carico derivato dallo storico.')}</div>${sugg.lastSummary?`<small>Ultima prestazione: ${esc(sugg.lastSummary)} · confidenza ${esc(sugg.confidence||'bassa')}</small>`:''}</div>`;}
       if(prevSets.length)c+=`<div class="previous-box"><div><b>Ultima volta</b><div class="subtle">${prevSets.map(x=>`${x.kg||'—'}×${x.reps||'—'} ${esc(x.metric||'RIR')} ${x.metricValue??'—'}`).join(' · ')}</div></div>${!ex.special&&!Array.isArray(ex.plannedSets)?`<button onclick="copyLastPerformance(${i})">Copia</button>`:''}</div>`;
       if(!ex.sets?.length){c+=`<div class="warmup-box"><div><b>${esc(ex.reps)}</b><div class="subtle">${esc(ex.note||'Preparazione')}</div></div><button onclick="completeWarmup(${i})">${ex.done?'Annulla':'Fatto'}</button></div>`;}
@@ -921,7 +946,7 @@ function renderSession(){
   c+=`<section class="card"><button class="primary-btn" onclick="finishWorkout()">Termina e salva allenamento</button><button class="danger-btn" style="margin-top:8px" onclick="discardWorkout()">Scarta sessione</button></section>`;
   return shell(c,ss.workout,`settimana ${ss.week} · sessione attiva`);
 }
-function benchTargetText(type,w){const pre=currentPreCycleStep();if(pre)return pre.target||'';const p=activeProgram().benchPlan?.[w-1];return type==='bench_push'?`${p?.pushTop||''} + ${p?.pushBackoff||''}`:`${p?.upperWork||''}`;}
+function benchTargetText(type,w){const pre=currentPreCycleStepFor(type);if(pre)return pre.target||'';const p=activeProgram().benchPlan?.[w-1];return type==='bench_push'?`${p?.pushTop||''} + ${p?.pushBackoff||''}`:`${p?.upperWork||''}`;}
 
 function renderHistory(){
   const workouts=['ALL',...new Set(state.history.map(s=>s.workout).filter(Boolean))];if(!workouts.includes(state.ui.historyWorkout))state.ui.historyWorkout='ALL';
@@ -1023,6 +1048,7 @@ $('#programInput')?.addEventListener('change',async e=>{
 });
 if('serviceWorker' in navigator && location.protocol!=='file:') window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(r=>r.update()).catch(()=>{}));
 try{const requested=new URLSearchParams(location.search).get('view');if(['home','program','history','progress','settings'].includes(requested))state.ui.view=requested;}catch(e){}
+const repairedProtocolSession=repairInvalidUpperBridgeSession();
 syncExerciseCatalogFromKnownData();seedPersonalReferences();saveState();
 setInterval(()=>{renderTimer();updateElapsed();},500);
 render();

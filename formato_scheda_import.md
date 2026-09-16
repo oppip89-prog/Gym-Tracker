@@ -101,3 +101,16 @@ Ogni esercizio può ora includere:
 - `progression.sets`: consente target reps diversi per ciascun set. Se omesso, v7.1 riconosce anche stringhe come `Top 6-9 / back-off 8-12`.
 
 Le vecchie schede restano compatibili: se questi campi mancano, l'app li deduce automaticamente.
+
+## Estensioni v7.2 — Exercise Memory
+
+La scheda continua a funzionare con il formato precedente. Sono supportati anche questi campi opzionali per ogni esercizio:
+
+- `exerciseId`: identificatore della specifica variante/macchina;
+- `movementId`: famiglia del movimento, utile per le sostituzioni;
+- `gym`: palestra o variante della macchina;
+- `loadMode`: `total`, `per-hand` oppure `assistance`;
+- `loadStepKg`: incremento reale utilizzabile;
+- `initialKg`: carico iniziale se non esistono storico o riferimento personale.
+
+Il database personale non deve essere inserito nella scheda: viene esportato automaticamente nei backup completi e nei pacchetti portabili v7.2 tramite il campo `exerciseCatalog`.

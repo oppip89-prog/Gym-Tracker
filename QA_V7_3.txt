@@ -1,0 +1,13 @@
+GYM TRACKER v7.3 - QA PROTOCOLLO A/B
+
+- Sintassi app.js: OK
+- Sintassi data.js: OK
+- Standalone JS: OK
+- Ponte 1 / PUSH / Protocollo A: 140x1 + 127,5x2x2: OK
+- Ponte aperto / UPPER / Protocollo B W1: 105x4x3: OK
+- UPPER non viene marcata come sessione ponte: OK
+- UPPER non fa avanzare preCycleStep: OK
+- Ponte 2 / PUSH / scarico: 110x4x2: OK
+- Mappatura Protocollo A e Protocollo B verificata per W1-W8: OK
+- Migrazione sessione UPPER v7.2 aperta e non iniziata -> rigenerazione B: OK
+- Cache PWA incrementata a v7.3: OK

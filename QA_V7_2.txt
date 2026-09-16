@@ -1,0 +1,17 @@
+GYM TRACKER v7.2 - QA
+
+- Sintassi app.js: OK
+- Migrazione v4 -> v7.2: OK, storico mantenuto e vecchia scheda archiviata
+- Catalogo esercizi generato da scheda + storico: OK
+- Riferimento Belt Squat 200 x 6: OK
+- Riferimento manuale recente prevale sul vecchio Belt Squat 60 x 12: OK
+- e1RM 200 x 6 = 240 kg con Epley: OK
+- 240 e1RM -> 8 reps @RIR2, step 5 = 180 kg: OK
+- 20 kg/manubrio x 5 -> e1RM 23,3 kg/manubrio: OK
+- 20 x 5 -> 8 reps @RIR2, step 2 = 18 kg/manubrio: OK
+- Smart Load 4 usa il database quando il riferimento e piu recente: OK
+- Serie extra su esercizi prescritti: implementate e escluse dall'autoregolazione panca target
+- Esercizio fuori scheda: implementato con configurazione serie/reps/RIR/recupero
+- Sostituzioni: profili separati per exerciseId e palestra, movementId condiviso
+- Backup/pacchetto: exerciseCatalog incluso
+- CSV: Palestra, Attrezzatura e LoadMode inclusi

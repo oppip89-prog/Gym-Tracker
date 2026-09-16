@@ -1,8 +1,8 @@
 {
   "type": "gym-tracker-program",
   "schemaVersion": 1,
-  "appVersion": 7.1,
-  "exportedAt": "2026-09-16T08:30:00.000Z",
+  "appVersion": 7.3,
+  "exportedAt": "2026-09-16T12:54:26.912968+00:00",
   "program": {
     "workouts": {
       "PUSH": {
@@ -1133,7 +1133,8 @@
             8.0
           ]
         ],
-        "restSec": 240
+        "restSec": 240,
+        "appliesTo": "bench_push"
       },
       {
         "step": 2,
@@ -1156,7 +1157,8 @@
             6.0
           ]
         ],
-        "restSec": 180
+        "restSec": 180,
+        "appliesTo": "bench_push"
       }
     ]
   }

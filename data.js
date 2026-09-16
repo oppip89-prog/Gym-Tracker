@@ -1103,6 +1103,7 @@ const DEFAULT_PROGRAM = {
   "preCycle": [
     {
       "step": 1,
+      "appliesTo": "bench_push",
       "phase": "Ponte - ultima intensificazione",
       "target": "140 kg x 1 + 127,5 kg - 2x2",
       "rpe": "8-8,5",
@@ -1132,6 +1133,7 @@ const DEFAULT_PROGRAM = {
     },
     {
       "step": 2,
+      "appliesTo": "bench_push",
       "phase": "Ponte - scarico",
       "target": "107,5-110 kg - 2x4 con fermo 2 s",
       "rpe": "5-6",

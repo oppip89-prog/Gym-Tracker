@@ -1,0 +1,16 @@
+Per aggiornare GitHub Pages sostituisci nella root della repository almeno questi file:
+
+index.html
+styles.css
+version.js
+data.js
+history_seed.js
+app.js
+manifest.webmanifest
+sw.js
+icon-192.png
+icon-512.png
+
+Gli altri file del pacchetto sono documentazione, backup/esempi o la versione standalone e non sono necessari al funzionamento della PWA.
+
+Dopo il commit su main, apri la PWA online, ricarica una volta, chiudila completamente e riaprila. Non cancellare i dati del sito se vuoi mantenere il localStorage della versione precedente.
