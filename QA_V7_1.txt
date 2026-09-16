@@ -1,0 +1,17 @@
+GYM TRACKER v7.1 - QA
+
+Verifiche eseguite:
+- sintassi JavaScript PWA e standalone: OK
+- manifest e JSON importabili: OK
+- caricamento HTTP index/service worker: OK
+- selezione RPE 8.5 / 9.5: OK
+- Smart Load top/back-off separato: OK
+- Smart Load MAX tecnico: OK
+- trazioni assistite: PR inverso ed e1RM disattivato: OK
+- step carico personalizzato: OK
+- exerciseId/movementId e sostituzioni senza contaminazione carichi: OK
+- proposta automatica passaggio W1 -> W8: OK
+- chiusura W8 senza W9: OK
+- reset persistente dopo reload: OK
+- migrazione diretta v4: storico preservato, vecchia scheda archiviata: OK
+- dashboard panca globale: OK
