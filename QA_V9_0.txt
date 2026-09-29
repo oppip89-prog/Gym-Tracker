@@ -1,0 +1,94 @@
+GYM TRACKER v9.0 - QA / TEST REPORT
+Data build: 2026-09-29
+
+BASE DI TEST
+- Progetto v8.0 derivato dal repository completo fornito dall'utente.
+- Backup reale del 29/09/2026.
+- Storico atteso e conservato: 13 sessioni.
+
+CONTROLLI STATICI
+[PASS] Sintassi: version.js, data.js, history_seed.js, app.js, v9_features.js, sw.js
+[PASS] manifest.webmanifest JSON valido
+[PASS] Tutti i file dichiarati nel CORE del Service Worker esistono
+[PASS] Ordine script corretto: version -> data -> history -> app -> v9_features
+[PASS] Standalone contiene CSS/JS inline della stessa build e JavaScript sintatticamente valido
+[PASS] Cache-busting ?v=9 sulle risorse principali
+[PASS] Service Worker usa ignoreSearch per mantenere il fallback offline con le URL versionate
+
+TEST DATI / MIGRAZIONE SUL BACKUP REALE
+[PASS] APP_VERSION 9.0
+[PASS] 13 sessioni originali mantenute dopo migrazione
+[PASS] Riconoscimento Borgaro/Pinerolo
+[PASS] Associazioni Pinerolo ricostruite dallo storico
+[PASS] Profilo Pinerolo applicato automaticamente al PUSH
+[PASS] Esercizi condivisi restano disponibili tra palestre
+[PASS] Profilo macchina condivisibile tra palestre supportato
+[PASS] Migrazione profili palestra idempotente
+[PASS] Stato v9 salvato nella stessa chiave localStorage
+[PASS] Salvataggio v9 non elimina lo storico
+
+TEST ADAPTIVE COACH / SMART LOAD 6
+[PASS] Avvio sessione e registrazione palestra
+[PASS] Con più palestre e nessuna attiva, l'app chiede la palestra prima di partire
+[PASS] Workout richiesto conservato durante la selezione palestra
+[PASS] Budget 30 minuti registrato e seduta compressa
+[PASS] Budget 90 minuti supportato senza tagli inutili
+[PASS] Panca prioritaria preservata anche nella seduta da 30 minuti
+[PASS] Compressione non svuota la seduta
+[PASS] Warm-up automatici generati
+[PASS] Warm-up breve non genera più serie del completo
+[PASS] Nessun warm-up automatico su macchine lower-is-harder/assistite
+[PASS] Warm-up esclusi dal volume allenante
+[PASS] Readiness bassa riconosciuta
+[PASS] Readiness assente resta completamente neutra
+[PASS] Riduzione volume accessorio per readiness
+[PASS] Smart Load 6 produce suggerimenti sullo storico reale
+[PASS] Feedback Pesante letto dallo storico
+[PASS] Due feedback Pesante causano riduzione prudenziale
+[PASS] Feedback Facile non provoca riduzioni
+[PASS] Scarico riduce/limita carico accessorio normale
+[PASS] Scarico aumenta l'assistenza sulle macchine lower-is-harder
+[PASS] Recupero muscolare restituito in scala 0-100
+[PASS] Volume settimanale per gruppo muscolare calcolato
+[PASS] Statistiche esercizio leggono lo storico reale
+
+TEST IMPORT / EXPORT
+[PASS] Import CSV riconosce Feedback_esercizio
+[PASS] Export portabile genera JSON realmente parsabile
+[PASS] Pacchetto portabile usa schemaVersion 6 e Smart Load 6
+[PASS] Pacchetto portabile conserva tutte le 13 sessioni reali
+[PASS] Pacchetto portabile include profili palestra
+[PASS] Pacchetto portabile include impostazioni Adaptive Coach
+[PASS] Backup completo serializza featureVersion 9
+[PASS] Backup completo conserva tutte le 13 sessioni reali
+
+TEST UI / FLUSSI
+[PASS] Render Home
+[PASS] Render Programma
+[PASS] Render Palestre
+[PASS] Render Storico
+[PASS] Render Progressi
+[PASS] Render Impostazioni
+[PASS] Render sessione adattiva
+[PASS] UI warm-up presente
+[PASS] UI swap intelligente presente
+
+STANDALONE VM SMOKE TEST
+[PASS] APP_VERSION 9
+[PASS] Mantiene le 13 sessioni
+[PASS] Migra 2 palestre
+[PASS] Renderizza Adaptive Coach
+[PASS] Avvia una sessione
+[PASS] Genera warm-up
+
+PWA / OFFLINE
+[PASS] CACHE_NAME incrementato alla v9
+[PASS] v9_features.js incluso nel precache
+[PASS] Navigazioni network-first con fallback index cache
+[PASS] Risorse versionate per evitare il mix v8/v9 al primo aggiornamento smartphone
+
+LIMITAZIONE AMBIENTE
+È stato tentato un test grafico E2E con Chromium headless, ma in questo ambiente Chromium non ha caricato né file:// né localhost e ha restituito chrome-error://chromewebdata/. Non è stato quindi considerato un test affidabile. La logica è stata invece eseguita con harness Node/VM sul backup reale e anche sulla build standalone. Dopo il deploy resta consigliato un normale smoke test visivo sul telefono.
+
+RISULTATO
+Tutti i test automatici/logici eseguibili nell'ambiente sono PASS.

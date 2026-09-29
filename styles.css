@@ -128,7 +128,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 @media(max-width:430px){.form-grid{grid-template-columns:1fr 1fr}.transform-results{grid-template-columns:1fr 1fr}.catalog-row{grid-template-columns:minmax(0,1fr) auto}.mini-actions.three{grid-template-columns:1fr 1fr}.mini-actions.three .danger-mini{grid-column:1/-1}}
 
 
-/* v8.0 - Gym Profiles and deload loads */
+/* Gym Profiles + deload loads (base v8, maintained in v9) */
 .gym-active-card{border-color:rgba(126,231,135,.2)}
 .gym-active-name{font-size:21px;font-weight:900;margin:7px 0 4px;letter-spacing:-.02em}
 .gym-profile-list{display:grid;gap:10px}
@@ -140,3 +140,16 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .gym-workout-title{margin:18px 2px 6px;color:var(--accent);font-size:13px;text-transform:uppercase;letter-spacing:.05em}
 .nav-btn b{font-size:18px}.nav-btn:nth-child(3) b{font-size:11px;line-height:20px;letter-spacing:.02em}
 @media(max-width:430px){.bottom-nav{padding-left:5px;padding-right:5px}.bottom-nav-inner{gap:1px}.nav-btn{font-size:9px;min-height:54px}.nav-btn b{font-size:17px;margin-bottom:4px}.nav-btn:nth-child(3) b{font-size:9px}.gym-card-actions{grid-template-columns:1fr}.gym-percent-control{grid-template-columns:64px auto}}
+
+/* v9.0 - Adaptive Coach, Smart Load 6, warm-up, readiness, recovery */
+.coach-card{border-color:rgba(88,166,255,.24);background:linear-gradient(135deg,rgba(88,166,255,.08),rgba(126,231,135,.05))}
+.readiness-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.readiness-grid label span{display:block;color:var(--muted);font-size:10px;font-weight:900;margin-bottom:5px;text-transform:uppercase;letter-spacing:.03em}
+.coach-note{margin-top:10px;padding:10px 11px;border-radius:12px;background:#0d131b;border:1px solid rgba(255,255,255,.06);color:var(--muted);font-size:11px;line-height:1.45}.coach-note b{color:var(--text)}
+.time-choice{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:12px}.time-choice button{min-height:40px;border:1px solid var(--line);background:#0d131b;color:var(--muted);border-radius:11px;font-weight:900;font-size:11px}.time-choice button.active{background:rgba(126,231,135,.14);border-color:rgba(126,231,135,.34);color:var(--accent)}
+.recovery-list{display:grid;gap:8px;margin-top:12px}.recovery-row{display:grid;grid-template-columns:82px 1fr 42px;gap:8px;align-items:center;font-size:11px}.recovery-row>span{font-weight:800}.recovery-row>div{height:8px;border-radius:999px;background:#0d131b;overflow:hidden;border:1px solid rgba(255,255,255,.05)}.recovery-row i{display:block;height:100%;border-radius:999px;background:var(--accent)}.recovery-row i.recovery-mid{background:var(--warn)}.recovery-row i.recovery-low{background:var(--danger)}.recovery-row b{text-align:right;font-size:11px}
+.muscle-volume-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.muscle-volume-grid>div{padding:10px;border-radius:13px;background:#0d131b;border:1px solid rgba(255,255,255,.05)}.muscle-volume-grid span{display:block;color:var(--muted);font-size:9px;font-weight:900;text-transform:uppercase}.muscle-volume-grid b{display:inline-block;font-size:20px;margin-top:4px}.muscle-volume-grid small{float:right;margin-top:8px;font-size:9px;font-weight:900}.green{color:var(--accent)}.warn{color:var(--warn)}
+.auto-warmup{margin:10px 0;padding:11px;border-radius:14px;background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.16)}.auto-warmup>.row b{font-size:12px}.auto-warmup>.row button,.warmup-generate{border:1px solid var(--line);background:#0d131b;color:var(--muted);border-radius:10px;min-height:34px;padding:0 10px;font-size:10px;font-weight:900}.warmup-generate{width:100%;margin:8px 0}
+.warmup-set-list{display:grid;gap:6px;margin-top:9px}.warmup-set-row{display:grid;grid-template-columns:30px 1fr 24px 1fr 26px 40px;gap:5px;align-items:center;font-size:10px;color:var(--muted)}.warmup-set-row .num-input{min-height:36px;padding:0 6px}.warmup-set-row .set-btn{width:40px;min-height:36px}
+.effort-feedback{margin-top:10px;padding:10px;border-radius:13px;background:#0d131b;border:1px solid rgba(255,255,255,.06)}.effort-feedback>span{display:block;color:var(--muted);font-size:10px;font-weight:900;text-transform:uppercase;margin-bottom:7px}.effort-feedback>div{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.effort-feedback button{min-height:38px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:10px;font-weight:900;font-size:11px}.effort-feedback button.active{border-color:rgba(126,231,135,.35);background:rgba(126,231,135,.12);color:var(--accent)}
+.pr-tag{display:inline-block!important;color:var(--warn)!important;font-weight:900!important;margin-top:2px}.suggestion-box.recalc .badge{color:#8bc4ff}
+@media(max-width:430px){.readiness-grid{grid-template-columns:1fr}.time-choice{grid-template-columns:repeat(3,1fr)}.muscle-volume-grid{grid-template-columns:repeat(2,1fr)}.recovery-row{grid-template-columns:72px 1fr 38px}.warmup-set-row{grid-template-columns:26px 1fr 22px 1fr 22px 38px}}

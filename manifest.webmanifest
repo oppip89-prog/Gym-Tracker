@@ -1,7 +1,7 @@
 {
-  "name": "Gym Tracker v8.0 - Gym Profiles + Smart Load 5",
+  "name": "Gym Tracker v9.0 - Adaptive Coach + Smart Load 6",
   "short_name": "Gym Tracker",
-  "description": "Tracker palestra local-first con profili palestra e macchine, storico carichi separato o condiviso, Smart Load 5, scarico automatico, ciclo panca forza, storico e schede portabili.",
+  "description": "Tracker palestra local-first con profili palestra, Smart Load 6, Adaptive Coach, warm-up automatico, readiness, recupero muscolare, durata adattiva, storico e schede portabili.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
