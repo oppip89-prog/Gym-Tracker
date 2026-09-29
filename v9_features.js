@@ -1,7 +1,7 @@
-/* Gym Tracker v9.0 - Adaptive Coach, Smart Load 6, Recovery, Warm-up, Time Planner */
+/* Gym Tracker v9.1 - Adaptive Coach, Smart Load 6.1, Recovery, Warm-up, Time Planner */
 
 // ---- stato / migrazione ---------------------------------------------------
-const V9_ENGINE='smart-load-v6-adaptive-coach';
+const V9_ENGINE='smart-load-v6.1-adaptive-coach-bench-rpe';
 Object.assign(defaultState.settings,{
   autoWarmup:true,
   adaptiveReadiness:true,
@@ -80,6 +80,107 @@ function muscleRecovery(){
 }
 function recoveryClass(v){return v>=80?'recovery-high':v>=55?'recovery-mid':'recovery-low';}
 
+// ---- Panca adattiva 6.1: RPE reale -> carichi della seduta successiva ----
+// La panca A/B e marcata come `special`, quindi il motore accessori non deve
+// governarla. Qui confrontiamo invece RPE reale e RPE target delle esposizioni
+// recenti e applichiamo un offset prudente alla prescrizione del ciclo.
+const v9RawGetBenchSets=getBenchSets;
+
+function benchTypeForExercise(ex){
+  if(ex?.special==='bench_push'||ex?.special==='bench_upper')return ex.special;
+  const n=cleanKey(ex?.name||'');
+  if(/protocollo b/.test(n))return'bench_upper';
+  if(/protocollo a/.test(n))return'bench_push';
+  return null;
+}
+function normalizeBenchPlanSets(arr=[],restSec=0){
+  return (arr||[]).map((item,i)=>({
+    label:String(Array.isArray(item)?(item[0]??i+1):(item?.label??i+1)),
+    kg:Number(Array.isArray(item)?item[1]:item?.kg)||0,
+    reps:Number(Array.isArray(item)?item[2]:item?.reps)||0,
+    targetRpe:Number(Array.isArray(item)?item[3]:item?.targetRpe),
+    restSec:Number(restSec)||0
+  }));
+}
+function rawBenchPlanForHistoricalSession(sess,type){
+  const p=activeProgram();
+  if(sess?.preCycleStepAtStart!==null&&sess?.preCycleStepAtStart!==undefined){
+    const pre=p.preCycle?.[Number(sess.preCycleStepAtStart)];
+    if(pre&&preCycleAppliesTo(pre,type))return normalizeBenchPlanSets(pre.sets||[],pre.restSec||0);
+  }
+  const b=p.benchStructured?.[String(Number(sess?.week)||1)]||p.benchStructured?.[Number(sess?.week)||1];
+  if(!b)return[];
+  return normalizeBenchPlanSets(type==='bench_push'?b.push:b.upper,type==='bench_push'?b.pushRest:b.upperRest);
+}
+function historicalBenchTargetRpe(sess,type,set,index){
+  const own=Number(set?.targetRpe);if(Number.isFinite(own)&&own>0)return own;
+  const plan=rawBenchPlanForHistoricalSession(sess,type);if(!plan.length)return null;
+  const label=cleanKey(set?.label||'');
+  const exact=plan.find(x=>cleanKey(x.label)===label);
+  const candidate=exact||plan[Math.min(index,plan.length-1)];
+  return Number.isFinite(Number(candidate?.targetRpe))?Number(candidate.targetRpe):null;
+}
+function benchHistoryEvents(limit=8){
+  const latestTs=(state.history||[]).reduce((m,s)=>Math.max(m,new Date(s.startedAt||0).getTime()||0),0)||Date.now(),events=[];
+  for(const sess of state.history||[]){
+    if(events.length>=limit)break;
+    const ex=(sess.exercises||[]).find(e=>benchTypeForExercise(e));if(!ex)continue;
+    const type=benchTypeForExercise(ex),done=(ex.sets||[]).filter(s=>s.done&&String(s.metric||'RPE').toUpperCase()==='RPE'&&Number(s.kg)>0&&Number(s.reps)>0&&s.target!==false&&!s.extra);
+    if(!done.length)continue;
+    const rows=done.map((set,i)=>{const actual=Number(set.metricValue),target=historicalBenchTargetRpe(sess,type,set,i);if(!Number.isFinite(actual)||!Number.isFinite(target))return null;let delta=actual-target;const speed=String(set.barSpeed||'');if(speed==='slow')delta+=.2;else if(speed==='grinder')delta+=.45;else if(speed==='fast')delta-=.1;return{set,index:i,actual,target,delta,kg:Number(set.kg)||0,reps:Number(set.reps)||0,speed};}).filter(Boolean);
+    if(!rows.length)continue;
+    let chosen=rows;
+    if(type==='bench_push'){
+      const singles=rows.filter(r=>r.reps===1||/top|singola|single|check|tentativo/.test(cleanKey(r.set.label||'')));if(singles.length)chosen=singles;
+    }
+    // Per la panca A conta soprattutto la singola peggiore; per la B la media dei set.
+    const delta=type==='bench_push'?Math.max(...chosen.map(r=>r.delta)):chosen.reduce((a,r)=>a+r.delta,0)/chosen.length;
+    const representative=type==='bench_push'?chosen.slice().sort((a,b)=>b.delta-a.delta)[0]:chosen[chosen.length-1];
+    const phase=cleanKey(sess.programPhase||'');
+    if(/scarico/.test(phase)&&delta<=.5)continue; // uno scarico riuscito non autorizza aumenti
+    const ts=new Date(sess.startedAt||0).getTime()||0,ageDays=Math.max(0,(latestTs-ts)/86400000);
+    events.push({session:sess,exercise:ex,type,delta,actual:representative.actual,target:representative.target,kg:representative.kg,reps:representative.reps,speed:representative.speed,phase,ageDays});
+  }
+  return events;
+}
+function benchAdaptiveSignal(type='bench_push',week=state.currentWeek){
+  const events=benchHistoryEvents(10).filter(e=>e.ageDays<=35);let weighted=0,total=0;
+  for(const e of events){const same=e.type===type?1:.55,w=Math.pow(.5,e.ageDays/14)*same;weighted+=e.delta*w;total+=w;}
+  const score=total?weighted/total:0,latest=events.find(e=>e.type===type)||events[0]||null;
+  let offsetKg=0;
+  if((latest&&latest.delta>=1.25)||score>=1.05)offsetKg=-5;
+  else if((latest&&latest.delta>=.5)||score>=.45)offsetKg=-2.5;
+  else if((latest&&latest.delta<=-1.25)&&score<=-.75)offsetKg=2.5;
+  const phase=cleanKey(currentPreCycleStepFor(type)?.phase||activeProgram().benchPlan?.[(Number(week)||1)-1]?.phase||'');
+  if(/scarico|taper/.test(phase)&&offsetKg>0)offsetKg=0;
+  const lastText=latest?`${fmtKg(latest.kg)}×${latest.reps} @RPE ${fmtKg(latest.actual)} (target ${fmtKg(latest.target)})`:'';
+  let reason='Panca in linea con il target: mantengo il carico del piano';
+  if(offsetKg<0)reason=`Panca adattata: RPE recente sopra target, ${String(offsetKg).replace('.',',')} kg rispetto al piano`;
+  else if(offsetKg>0)reason=`Panca adattata: RPE recente sotto target, +${String(offsetKg).replace('.',',')} kg rispetto al piano`;
+  if(lastText)reason+=` · ultimo riferimento ${lastText}`;
+  return{type,week,events,score,latest,offsetKg,reason,confidence:events.length>=4?'alta':events.length>=2?'media':events.length?'bassa':'piano'};
+}
+function adaptBenchSets(type,week,raw){
+  const signal=benchAdaptiveSignal(type,week),off=Number(signal.offsetKg)||0;
+  return (raw||[]).map(s=>{const planned=Number(s.kg)||0;if(!(planned>0)||!off)return{...s,plannedKg:planned,benchAdaptiveOffsetKg:0,benchAdaptiveReason:signal.reason};const kg=Math.max(0,Math.round((planned+off)*2)/2);return{...s,plannedKg:planned,kg,recommendedKg:kg,benchAdaptiveOffsetKg:off,benchAdaptiveReason:signal.reason};});
+}
+getBenchSets=function(type,week){return adaptBenchSets(type,week,v9RawGetBenchSets(type,week));};
+function benchAdaptiveSuggestion(type,week=state.currentWeek){
+  const raw=v9RawGetBenchSets(type,week),sets=adaptBenchSets(type,week,raw);if(!sets.length)return null;const signal=benchAdaptiveSignal(type,week),planned=Number(raw[0]?.kg)||0,next=Number(sets[0]?.kg)||planned,mode=next<planned?'decrease':next>planned?'increase':'maintain';return{load:planned,next,increased:next>planned,inc:2.5,delta:next-planned,source:'panca adattiva',reason:signal.reason,mode,confidence:signal.confidence,historyCount:signal.events.length,lastSummary:signal.latest?`${fmtKg(signal.latest.kg)}×${signal.latest.reps} @RPE ${fmtKg(signal.latest.actual)} / target ${fmtKg(signal.latest.target)}`:'',benchAdaptive:true,benchScore:Math.round(signal.score*100)/100};
+}
+
+// Autoregolazione intra-sessione: non solo i back-off. Se una singola/check o
+// anche un set di Panca B supera chiaramente l'RPE target, tutte le serie di
+// lavoro successive vengono alleggerite e il recommendedKg resta coerente.
+maybeAutoregulateBench=function(ex,si){
+  if(!ex?.special||!ex.sets?.[si]?.done)return;const set=ex.sets[si],actual=Number(set.metricValue),target=Number(set.targetRpe);if(!Number.isFinite(actual)||!Number.isFinite(target))return;
+  const singleLike=Number(set.reps)===1||/top|singola|single|check|tentativo/.test(cleanKey(set.label||''));
+  const future=ex.sets.slice(si+1).filter(x=>!x.done&&x.target!==false&&!x.extra);if(!future.length){if(actual<=target-1)toast('Panca molto facile: mantieni il piano e usa il dato per la seduta successiva');return;}
+  let drop=0;if(actual>=9.5||actual>=target+1.5)drop=5;else if(actual>=target+(singleLike?.5:1))drop=2.5;
+  if(drop){future.forEach(x=>{const before=Number(x.kg)||0;if(!before)return;if(x.autoregulatedFromKg===undefined)x.autoregulatedFromKg=before;x.kg=Math.max(0,Math.round((before-drop)*2)/2);x.recommendedKg=x.kg;x.autoregulationReason=`RPE ${actual} vs target ${target} nel set ${set.label||si+1}`;});toast(`RPE alto: serie successive ridotte di ${String(drop).replace('.',',')} kg`);}
+  else if(actual<=target-1)toast('Panca molto facile: mantieni il piano, niente aumento forzato oggi');
+};
+
 // ---- Smart Load 6: storico recente + feedback ----------------------------
 function smartLoadSignal(ex,index=0){
   const records=exerciseHistory(ex,5),sets=[];
@@ -106,7 +207,9 @@ function applyReadinessToSuggestion(ex,suggestion){
 }
 const v8SuggestedLoadForSet=suggestedLoadForSet;
 suggestedLoadForSet=function(ex,index=0){
-  // riparte dal motore base per applicare feedback prima di scarico/readiness
+  // La panca usa il proprio motore RPE-aware: il piano resta la base, ma i kg
+  // vengono corretti dalle esposizioni reali. Accessori/macchine usano Smart Load 6.1.
+  if(ex?.special==='bench_push'||ex?.special==='bench_upper')return benchAdaptiveSuggestion(ex.special,state.currentWeek);
   let s=baseSuggestedLoadForSet(ex,index);s=refineSmartLoad6(ex,index,s);s=applyPhaseLoadToSuggestion(ex,s);s=applyReadinessToSuggestion(ex,s);return s;
 };
 function feedbackLabel(v){return v==='easy'?'Facile':v==='right'?'Giusto':v==='hard'?'Pesante':'—';}
@@ -202,13 +305,13 @@ renderSession=function(){
 };
 
 const v8RenderProgress=renderProgress;
-renderProgress=function(){let html=v8RenderProgress();const name=state.ui.progressExercise;if(!name||name===BENCH_GLOBAL_NAME)return html;const target=findProgramExercise(name)||catalogEntries().find(p=>p.name===name)||{name,exerciseId:slugId(name)},st=detailedExerciseStats(target),last=st.last?.sets?.[0];const extra=`<section class="card"><div class="row between"><div><h2 style="margin:0">Analisi esercizio</h2><div class="subtle">Smart Load 6 · storico ${st.records} sedute</div></div><span class="badge ${st.plateau?'warn':'green'}">${st.plateau?'STABILE':'TREND'}</span></div><div class="stat-grid"><div class="stat-card"><strong>${st.totalSets}</strong><span>serie totali</span></div><div class="stat-card"><strong>${st.totalReps}</strong><span>reps totali</span></div><div class="stat-card"><strong>${st.prCount}</strong><span>PR marcati</span></div><div class="stat-card"><strong>${st.feedback?feedbackLabel(st.feedback):'—'}</strong><span>ultimo feedback</span></div></div><div class="coach-note">${st.plateau?'Prestazioni molto simili nelle ultime 3 sedute. Smart Load evita aumenti automatici non supportati dai dati.':`Trend recente ${st.trend>=0?'+':''}${st.trend.toFixed(1)}%.`}${last?` Ultimo riferimento: ${fmtKg(last.kg)}×${last.reps}.`:''}</div></section>`;return html.replace('</main>',`${extra}</main>`);};
+renderProgress=function(){let html=v8RenderProgress();const name=state.ui.progressExercise;if(!name||name===BENCH_GLOBAL_NAME)return html;const target=findProgramExercise(name)||catalogEntries().find(p=>p.name===name)||{name,exerciseId:slugId(name)},st=detailedExerciseStats(target),last=st.last?.sets?.[0];const extra=`<section class="card"><div class="row between"><div><h2 style="margin:0">Analisi esercizio</h2><div class="subtle">Smart Load 6.1 · storico ${st.records} sedute</div></div><span class="badge ${st.plateau?'warn':'green'}">${st.plateau?'STABILE':'TREND'}</span></div><div class="stat-grid"><div class="stat-card"><strong>${st.totalSets}</strong><span>serie totali</span></div><div class="stat-card"><strong>${st.totalReps}</strong><span>reps totali</span></div><div class="stat-card"><strong>${st.prCount}</strong><span>PR marcati</span></div><div class="stat-card"><strong>${st.feedback?feedbackLabel(st.feedback):'—'}</strong><span>ultimo feedback</span></div></div><div class="coach-note">${st.plateau?'Prestazioni molto simili nelle ultime 3 sedute. Smart Load evita aumenti automatici non supportati dai dati.':`Trend recente ${st.trend>=0?'+':''}${st.trend.toFixed(1)}%.`}${last?` Ultimo riferimento: ${fmtKg(last.kg)}×${last.reps}.`:''}</div></section>`;return html.replace('</main>',`${extra}</main>`);};
 
 const v8ShowExerciseProfile=showExerciseProfile;
 showExerciseProfile=function(id){const p=catalogEntry(id);if(!p)return;const st=exerciseReferenceStats(p),d=detailedExerciseStats(p),best=st.best,latest=st.latest;showModal(`<h2>${esc(profileDisplayName(p))}</h2><p class="subtle">${esc(p.equipment||'Attrezzatura non specificata')} · ${esc(loadModeLabel(p.loadMode||inferLoadMode(p)))}</p><div class="bench-dashboard"><div><span>Ultimo riferimento</span><strong>${latest?`${fmtKg(latest.kg)} × ${latest.reps}`:'—'}</strong></div><div><span>Miglior e1RM</span><strong>${st.bestE1rm?`${fmtKg(st.bestE1rm)} ${esc(loadUnitLabel(p))}`:isLowerHarder(p)?'n/a':'—'}</strong></div><div><span>Step</span><strong>${fmtKg(loadStepFor(p))} ${esc(loadUnitLabel(p))}</strong></div><div><span>Movimento</span><strong>${esc(p.movementId||'—')}</strong></div><div><span>Serie registrate</span><strong>${d.totalSets}</strong></div><div><span>Trend recente</span><strong>${d.records>1?`${d.trend>=0?'+':''}${d.trend.toFixed(1)}%`:'—'}</strong></div></div>${p.notes?`<div class="coach-note"><b>Setup:</b> ${esc(p.notes)}</div>`:''}${st.manual?`<div class="history-suggestion">Riferimento manuale: <b>${fmtKg(st.manual.kg)} × ${st.manual.reps}</b></div>`:''}<div class="action-stack"><button class="primary-btn" onclick="showTransformerForExercise(decodeURIComponent('${encodedArg(id)}'))">Apri trasformatore</button><button class="secondary-btn" onclick="showCatalogEditor(decodeURIComponent('${encodedArg(id)}'))">Modifica / registra carico</button></div><button class="secondary-btn" style="margin-top:8px" onclick="closeModal()">Chiudi</button>`);};
 
 const v8RenderSettings=renderSettings;
-renderSettings=function(){let html=v8RenderSettings();const card=`<section class="card"><h2 style="margin-top:0">Adaptive Coach v9</h2>${settingToggle('autoWarmup','Warm-up automatico','Genera serie di avvicinamento separate dal volume allenante.')}${settingToggle('adaptiveTime','Adatta alla durata','Riduce prima le serie/accessori meno prioritari.')}${settingToggle('adaptiveReadiness','Usa readiness','Se compili il check-in, modula leggermente accessori e volume.')}${settingToggle('muscleRecovery','Recupero muscolare','Mostra indicatore euristico di recupero e volume per gruppo.')}${settingToggle('effortFeedback','Feedback esercizio','Usa Facile/Giusto/Pesante come segnale aggiuntivo per Smart Load 6.')}</section>`;return html.replace('</main>',`${card}</main>`);};
+renderSettings=function(){let html=v8RenderSettings();const card=`<section class="card"><h2 style="margin-top:0">Adaptive Coach v9.1</h2>${settingToggle('autoWarmup','Warm-up automatico','Genera serie di avvicinamento separate dal volume allenante.')}${settingToggle('adaptiveTime','Adatta alla durata','Riduce prima le serie/accessori meno prioritari.')}${settingToggle('adaptiveReadiness','Usa readiness','Se compili il check-in, modula leggermente accessori e volume.')}${settingToggle('muscleRecovery','Recupero muscolare','Mostra indicatore euristico di recupero e volume per gruppo.')}${settingToggle('effortFeedback','Feedback esercizio','Usa Facile/Giusto/Pesante come segnale aggiuntivo per Smart Load 6.1.')}</section>`;return html.replace('</main>',`${card}</main>`);};
 
 // estende etichette suggerimenti
 const v8SuggestionModeLabel=suggestionModeLabel;suggestionModeLabel=function(mode){if(mode==='readiness')return'READINESS';return v8SuggestionModeLabel(mode);};
@@ -217,7 +320,7 @@ const v8SuggestionModeClass=suggestionModeClass;suggestionModeClass=function(mod
 // backup/portable sono già stateful: aggiorna solo identificazione motore nel pacchetto
 const v8ExportPortableProgram=exportPortableProgram;
 exportPortableProgram=function(){
-  ensureV9State();const payload={type:'gym-tracker-program-package',schemaVersion:6,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),currentWeek:state.currentWeek,preCycleStep:state.preCycleStep,program:clone(activeProgram()),history:clone(state.history),progression:{engine:V9_ENGINE,benchAutoregulation:'rpe-guard-v1',historyDriven:true,exerciseIdentity:'program-slot-plus-machine-profile-plus-gym',features:['gym-profiles','feedback','warmup','readiness','time-adaptation','muscle-recovery']},exerciseSettings:clone(state.exerciseSettings||{}),exerciseCatalog:clone(state.exerciseCatalog||{}),gymProfiles:clone(state.gymProfiles||[]),activeGymId:state.activeGymId||'',weekStartedAt:state.weekStartedAt,readiness:clone(state.readiness||{}),settings:clone(state.settings||{})};downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`gym-tracker-v9-pacchetto-${new Date().toISOString().slice(0,10)}.json`);
+  ensureV9State();const payload={type:'gym-tracker-program-package',schemaVersion:6,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),currentWeek:state.currentWeek,preCycleStep:state.preCycleStep,program:clone(activeProgram()),history:clone(state.history),progression:{engine:V9_ENGINE,benchAutoregulation:'rpe-adaptive-v2',historyDriven:true,exerciseIdentity:'program-slot-plus-machine-profile-plus-gym',features:['gym-profiles','feedback','warmup','readiness','time-adaptation','muscle-recovery']},exerciseSettings:clone(state.exerciseSettings||{}),exerciseCatalog:clone(state.exerciseCatalog||{}),gymProfiles:clone(state.gymProfiles||[]),activeGymId:state.activeGymId||'',weekStartedAt:state.weekStartedAt,readiness:clone(state.readiness||{}),settings:clone(state.settings||{})};downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`gym-tracker-v9-1-pacchetto-${new Date().toISOString().slice(0,10)}.json`);
 };
 
 ensureV9State();saveState();render();

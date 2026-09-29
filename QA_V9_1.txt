@@ -1,0 +1,21 @@
+GYM TRACKER v9.1 - QA BENCH RPE ADAPTIVE
+
+Base test: backup reale gym-tracker-backup-2026-09-29.json.
+
+[PASS] APP_VERSION 9.1 e stessa chiave localStorage
+[PASS] 13 sessioni del backup preservate
+[PASS] migrazione Borgaro/Pinerolo preservata
+[PASS] Smart Load accessori/macchine invariato
+[PASS] panca A ora usa motore RPE-aware dedicato
+[PASS] sul backup reale W1 top single: piano 132,5 -> adattato 130 kg
+[PASS] sul backup reale W1 back-off: piano 112,5 -> adattato 110 kg
+[PASS] panca B resta invariata quando gli RPE storici sono in target
+[PASS] caso sintetico 142,5 e 145 kg entrambi @RPE 9: piano successivo viene alleggerito
+[PASS] autoregolazione intra-sessione: check 140 @RPE 9 vs target 8 riduce 145 -> 142,5 e 150 -> 147,5
+[PASS] Home/Scheda usano i target adattati
+[PASS] render Home, Scheda, Palestre, Storico, Progressi, Impostazioni
+[PASS] warm-up, readiness, time adaptation, recovery, swap smart
+[PASS] scarico accessori e assistenza
+[PASS] export portabile e backup completo
+[PASS] tests_v9.js
+[PASS] tests_v9_edge.js
