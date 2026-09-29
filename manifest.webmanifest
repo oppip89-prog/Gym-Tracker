@@ -1,7 +1,7 @@
 {
-  "name": "Gym Tracker v7.3 - Exercise Memory + Panca Forza 8W",
+  "name": "Gym Tracker v8.0 - Gym Profiles + Smart Load 5",
   "short_name": "Gym Tracker",
-  "description": "Tracker palestra local-first con Exercise Memory, database esercizi e carichi, trasformatore e1RM, Smart Load 4, ciclo panca forza 8 settimane, storico e schede portabili.",
+  "description": "Tracker palestra local-first con profili palestra e macchine, storico carichi separato o condiviso, Smart Load 5, scarico automatico, ciclo panca forza, storico e schede portabili.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -34,6 +34,18 @@
       "name": "Oggi",
       "short_name": "Oggi",
       "url": "./?view=home",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Palestre",
+      "short_name": "Palestre",
+      "url": "./?view=gyms",
       "icons": [
         {
           "src": "icon-192.png",

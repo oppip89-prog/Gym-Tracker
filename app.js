@@ -1,4 +1,4 @@
-/* Gym Tracker v7.3 - Exercise Memory, Protocol A/B Fix, Smart Load 4, local-first */
+/* Gym Tracker v8.0 - Gym Profiles, machine-specific history, Deload Load, local-first */
 /* APP_VERSION arriva da version.js, caricato prima di questo file */
 const STORAGE_KEY = 'gym_tracker_ppl_upper_lower_v1';
 const $ = (sel) => document.querySelector(sel);
@@ -17,9 +17,13 @@ const defaultState = {
   currentSession: null,
   timer: null,
   ui: { view:'home', openExercise:0, progressExercise:'Panca piana – Protocollo A', progressMetric:'e1rm', historyWorkout:'ALL', historyQuery:'', catalogQuery:'', transformer:{exerciseId:'',kg:'',reps:5,rir:0,targetReps:8,targetRir:2,step:''} },
-  settings: { autoTimer:true, vibrate:true, wakeLock:false, showRir:true, smartLoad:true },
+  settings: { autoTimer:true, vibrate:true, wakeLock:false, showRir:true, smartLoad:true, accessoryDeloadEnabled:true, accessoryDeloadFactor:0.90 },
   exerciseSettings: {},
   exerciseCatalog: {},
+  gymProfiles: [],
+  activeGymId: '',
+  gymProfilesVersion: 1,
+  gymProfilesMigratedAt: null,
   weekStartedAt: null,
   pendingWeekAdvance: null,
   cycleCompletedAt: null
@@ -56,6 +60,10 @@ function loadState(){
       settings:{...defaultState.settings,...(parsed.settings||{})},
       exerciseSettings:{...(parsed.exerciseSettings||{})},
       exerciseCatalog:{...(parsed.exerciseCatalog||{})},
+      gymProfiles:Array.isArray(parsed.gymProfiles)?parsed.gymProfiles:[],
+      activeGymId:String(parsed.activeGymId||parsed.activeGym?.id||parsed.activeGym||''),
+      gymProfilesVersion:Number(parsed.gymProfilesVersion)||1,
+      gymProfilesMigratedAt:parsed.gymProfilesMigratedAt||null,
       pendingWeekAdvance:parsed.pendingWeekAdvance||null,
       weekStartedAt:parsed.weekStartedAt||(oldVersion<7.1?new Date().toISOString():null),
       cycleCompletedAt:parsed.cycleCompletedAt||null,
@@ -126,11 +134,11 @@ function inferMovementId(name=''){
   if(/shoulder press|distensioni.*testa/.test(n))return'overhead-press';
   if(/alzate laterali/.test(n))return'lateral-raise';
   if(/reverse pec|croci inverse/.test(n))return'rear-delt';
+  if(/leg extension/.test(n))return'knee-extension';
+  if(/leg curl/.test(n))return'knee-flexion';
   if(/curl/.test(n))return'biceps-curl';
   if(/pushdown|tricipiti|estensione.*overhead/.test(n))return'triceps-extension';
   if(/squat|pressa|belt/.test(n))return'knee-dominant';
-  if(/leg extension/.test(n))return'knee-extension';
-  if(/leg curl/.test(n))return'knee-flexion';
   if(/hip thrust/.test(n))return'hip-thrust';
   if(/romanian|stacco/.test(n))return'hip-hinge';
   if(/calf/.test(n))return'calf-raise';
@@ -233,6 +241,44 @@ function preCycleAppliesTo(pre,type){
 function currentPreCycleStepFor(type){ const pre=currentPreCycleStep(); return preCycleAppliesTo(pre,type)?pre:null; }
 function preCycleCount(){ const steps=activeProgram().preCycle; return Array.isArray(steps)?steps.length:0; }
 function benchProtocolInfo(type='bench_push',week=state.currentWeek){ return currentPreCycleStepFor(type)||activeProgram().benchPlan?.[week-1]||null; }
+
+const GYM_PROFILES_VERSION=1;
+function gymNow(){ return new Date().toISOString(); }
+function normalizeGymProfile(g){
+  return {id:String(g?.id||slugId(g?.name||'Palestra')),name:String(g?.name||'Palestra').trim()||'Palestra',mappings:g?.mappings&&typeof g.mappings==='object'?{...g.mappings}:{},notes:String(g?.notes||''),createdAt:g?.createdAt||gymNow(),updatedAt:g?.updatedAt||gymNow()};
+}
+function ensureGymByName(name){
+  state.gymProfiles=Array.isArray(state.gymProfiles)?state.gymProfiles:[];const key=cleanKey(name);let gym=state.gymProfiles.find(g=>cleanKey(g.name)===key);if(gym)return gym;
+  const base=slugId(name)||`gym-${Date.now()}`;let id=base,n=2;while(state.gymProfiles.some(g=>g.id===id))id=`${base}-${n++}`;gym=normalizeGymProfile({id,name});state.gymProfiles.push(gym);return gym;
+}
+function baseGymSlotKey(ex){ return slugId(ex?.programSlotId||ex?.programExerciseId||ex?.baseName||ex?.exerciseId||ex?.name||''); }
+function migrateGymProfilesFromHistory(){
+  if(state.gymProfilesMigratedAt)return;const seen=new Set();
+  for(const sess of state.history||[])for(const ex of sess.exercises||[]){const gymName=String(ex?.gym||'').trim(),baseName=String(ex?.baseName||'').trim(),exId=String(ex?.exerciseId||'').trim();if(!gymName||!baseName||!exId)continue;const gym=ensureGymByName(gymName),slot=slugId(baseName),stamp=`${gym.id}|${slot}`;if(seen.has(stamp))continue;gym.mappings[slot]=exId;gym.updatedAt=gymNow();seen.add(stamp);}
+  state.gymProfilesMigratedAt=gymNow();
+}
+function repairMovementIds(){ for(const sess of state.history||[])for(const ex of sess.exercises||[]){const n=cleanKey(ex?.name||'');if(/leg curl/.test(n)&&ex.movementId==='biceps-curl')ex.movementId='knee-flexion';}for(const entry of Object.values(state.exerciseCatalog||{})){const n=cleanKey(entry?.name||'');if(/leg curl/.test(n)&&entry.movementId==='biceps-curl')entry.movementId='knee-flexion';} }
+function ensureGymState(){
+  repairMovementIds();state.gymProfiles=Array.isArray(state.gymProfiles)?state.gymProfiles.map(normalizeGymProfile):[];state.gymProfilesVersion=GYM_PROFILES_VERSION;
+  if(typeof state.activeGymId!=='string')state.activeGymId='';if(!state.settings)state.settings={};if(typeof state.settings.accessoryDeloadEnabled!=='boolean')state.settings.accessoryDeloadEnabled=true;if(!(Number(state.settings.accessoryDeloadFactor)>=0.5&&Number(state.settings.accessoryDeloadFactor)<=1))state.settings.accessoryDeloadFactor=.90;
+  migrateGymProfilesFromHistory();if(state.gymProfiles.length===1&&!state.activeGymId)state.activeGymId=state.gymProfiles[0].id;if(state.activeGymId&&!state.gymProfiles.some(g=>g.id===state.activeGymId))state.activeGymId='';
+}
+function activeGym(){ return (state.gymProfiles||[]).find(g=>g.id===state.activeGymId)||null; }
+function gymExerciseProfile(ex,profile,gym,slot){
+  if(!ex||!profile)return ex;const originalName=ex.baseName||ex.name;ex.programSlotId=slot||baseGymSlotKey(ex);ex.programExerciseId=ex.programExerciseId||ex.exerciseId||slugId(originalName);ex.baseName=originalName;ex.name=profile.name||ex.name;ex.replacement=profile.name===originalName&&!profile.gym?null:profile.name;ex.exerciseId=profile.id||slugId(profile.name||ex.name);ex.movementId=profile.movementId||ex.movementId||inferMovementId(profile.name||ex.name);ex.historyKey=profile.name||ex.name;ex.aliases=[profile.name||ex.name];ex.loadDirection=profile.loadDirection||ex.loadDirection||inferLoadDirection(profile);ex.loadMode=profile.loadMode||ex.loadMode||inferLoadMode(profile);ex.equipment=profile.equipment||ex.equipment||'';ex.gym=profile.gym||'';ex.selectedGymId=gym?.id||'';ex.selectedGymName=gym?.name||'';if(Number(profile.loadStepKg)>0)ex.loadStepKg=Number(profile.loadStepKg);return ex;
+}
+function applyActiveGymToWorkout(workout){
+  ensureGymState();const gym=activeGym();if(!workout||!gym||!Array.isArray(workout.exercises))return workout;for(const ex of workout.exercises){if(!ex||ex.special)continue;const slot=baseGymSlotKey(ex);ex.programSlotId=slot;const mappedId=gym.mappings?.[slot];if(!mappedId)continue;const profile=catalogEntry(mappedId);if(profile)gymExerciseProfile(ex,profile,gym,slot);}workout.gymId=gym.id;workout.gymName=gym.name;return workout;
+}
+function currentLoadContexts(){ const out=[];const pre=currentPreCycleStep();if(pre)out.push(pre);const ad=currentAdaptation();if(ad)out.push(ad);return out; }
+function explicitAccessoryLoadFactor(ctx){ if(!ctx||typeof ctx!=='object')return 0;for(const v of [ctx.accessoryLoadFactor,ctx.machineLoadFactor,ctx.loadFactor,ctx.intensityFactor,ctx.accessories?.loadFactor,ctx.deload?.loadFactor]){let n=Number(v);if(n>=50&&n<=120)n/=100;if(n>=.5&&n<=1.2)return n;}return 0; }
+function accessoryLoadPolicy(){
+  ensureGymState();if(state.settings.accessoryDeloadEnabled===false)return{factor:1,reason:''};for(const ctx of currentLoadContexts()){const factor=explicitAccessoryLoadFactor(ctx);if(factor&&Math.abs(factor-1)>.001)return{factor,reason:`fase ${Math.round(factor*100)}%`};}
+  const text=currentLoadContexts().map(x=>[x.phase,x.title,x.name,x.label].filter(Boolean).join(' ')).join(' ');if(/scarico|deload/i.test(text)){const factor=clamp(Number(state.settings.accessoryDeloadFactor)||.9,.5,1);return{factor,reason:`scarico ${Math.round(factor*100)}%`};}return{factor:1,reason:''};
+}
+function applyPhaseLoadToSuggestion(ex,suggestion){
+  if(!suggestion||ex?.special||ex?.autoLoad===false||suggestion.mode==='fixed'||suggestion.phaseAdjusted)return suggestion;const policy=accessoryLoadPolicy();if(Math.abs(policy.factor-1)<.001)return suggestion;const raw=Number(suggestion.next);if(!(raw>0))return suggestion;const step=loadStepFor(ex)||2.5;let next=isLowerHarder(ex)?roundLoad(raw/policy.factor,step,raw):roundLoad(raw*policy.factor,step,raw);next=Math.max(0,Math.round(next*100)/100);return{...suggestion,next,reason:[suggestion.reason,policy.reason].filter(Boolean).join(' \u00b7 '),mode:'deload',phaseBaseKg:raw,phaseLoadFactor:policy.factor,phaseAdjusted:true};
+}
 function usesLegacyWeekAdaptations(){ return activeProgram().legacyWeekAdaptations===true; }
 
 function normalizeExercise(raw,index=0){
@@ -324,6 +370,7 @@ function getAdjustedWorkout(name, week=state.currentWeek){
     }
   });
   base.exercises=base.exercises.filter(ex=>!ex.special||getBenchSets(ex.special,week).length>0);
+  applyActiveGymToWorkout(base);
   base.estimatedMin = estimateWorkout(base,week);
   return base;
 }
@@ -451,7 +498,7 @@ function inferredLoadStepFor(ex){
 }
 function loadStepFor(ex){ const id=effectiveExerciseId(ex),custom=Number(state.exerciseSettings?.[id]?.loadStepKg),catalog=Number(state.exerciseCatalog?.[id]?.loadStepKg); return custom>0?custom:catalog>0?catalog:inferredLoadStepFor(ex); }
 function roundLoad(v,step,anchor=0){ if(!Number.isFinite(v)||!step) return v; return Math.round((anchor+Math.round((v-anchor)/step)*step)*100)/100; }
-function suggestedLoadForSet(ex,index=0){
+function baseSuggestedLoadForSet(ex,index=0){
   ensureExerciseIdentity(ex);
   if(ex.autoLoad===false){ const fixed=Number(ex.initialKg); return fixed>0?{load:fixed,next:fixed,increased:false,inc:0,source:'scheda',reason:'carico fisso della scheda',mode:'fixed',confidence:'scheda',historyCount:0}:null; }
   const records=exerciseHistory(ex,6), lastRecord=records[0], initial=Number(ex.initialKg), inc=loadStepFor(ex), profile=repRangeForSet(ex,index), targetRir=defaultRir(ex.rir);
@@ -490,11 +537,13 @@ function suggestedLoadForSet(ex,index=0){
   next=Math.max(0,Math.round(next*100)/100);const confidence=records.length>=4?'alta':records.length>=2?'media':'bassa';
   return{load,next,increased:mode==='increase',inc,delta,source:'storico',reason,mode,last:lastRecord?.exercise,confidence,historyCount:records.length,lastSummary:lastRecord?performanceLabel(lastRecord.sets):'',lastDate:lastRecord?.session?.startedAt,targetRange:profile.label};
 }
+function suggestedLoadForSet(ex,index=0){ return applyPhaseLoadToSuggestion(ex,baseSuggestedLoadForSet(ex,index)); }
 function suggestedLoad(ex){ return suggestedLoadForSet(ex,0); }
 function suggestedSetLoad(ex,index,sugg,last){ const own=suggestedLoadForSet(ex,index); return own?.next??sugg?.next??''; }
 
 function startWorkout(name){
-  if(state.currentSession){ toast('Hai già una sessione attiva'); state.ui.view='session'; saveState(); render(); return; }
+  if(state.currentSession){ toast('Hai gi\u00e0 una sessione attiva'); state.ui.view='session'; saveState(); render(); return; }
+  ensureGymState();if(state.gymProfiles.length>1&&!activeGym()){state.ui.pendingWorkout=name;state.ui.view='gyms';saveState();render();toast('Seleziona la palestra prima di iniziare');return;}
   const workout=getAdjustedWorkout(name,state.currentWeek); if(!workout.exercises.length){toast('Workout non trovato');return;}
   const exercises=workout.exercises.map(ex=>{
     ensureExerciseIdentity(ex);
@@ -514,7 +563,7 @@ function startWorkout(name){
   const pre=currentPreCycleStep();
   const bridgeExercise=pre?exercises.find(ex=>ex.special&&preCycleAppliesTo(pre,ex.special)):null;
   const bridgeActive=!!bridgeExercise;
-  state.currentSession={id:uid(),workout:name,week:state.currentWeek,programTitle:programTitle(),programPhase:bridgeActive?(pre?.phase||'Ponte Panca A'):(currentBenchPlan()?.phase||''),preCycleStepAtStart:bridgeActive?Number(state.preCycleStep):null,startedAt:new Date().toISOString(),exercises,estimatedMin:workout.estimatedMin,sessionRpe:'',bodyweightKg:'',notes:''};
+  const gym=activeGym();state.currentSession={id:uid(),workout:name,week:state.currentWeek,programTitle:programTitle(),programPhase:bridgeActive?(pre?.phase||'Ponte Panca A'):(currentBenchPlan()?.phase||''),preCycleStepAtStart:bridgeActive?Number(state.preCycleStep):null,startedAt:new Date().toISOString(),exercises,estimatedMin:workout.estimatedMin,sessionRpe:'',bodyweightKg:'',notes:'',gymId:gym?.id||'',gymName:gym?.name||''};state.ui.pendingWorkout='';
   state.ui.view='session'; state.ui.openExercise=0; saveState(); requestWakeLock(); render();
 }
 
@@ -735,12 +784,12 @@ function exportBackup(){
   downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`gym-tracker-backup-${new Date().toISOString().slice(0,10)}.json`);
 }
 function exportCSV(){
-  const rows=[['Sessione','Data','Workout','Settimana','Durata_min','Peso_kg','RPE_sessione','Note_sessione','Programma','Esercizio','ExerciseId','MovementId','HistoryKey','Palestra','Attrezzatura','LoadMode','Serie','Kg','Carico_consigliato','Reps','RIR_RPE','Tipo','Velocita','Motivo_consiglio','Note_esercizio']];
+  const rows=[['Sessione','Data','Workout','Settimana','Durata_min','Peso_kg','RPE_sessione','Note_sessione','Programma','Palestra_sessione','Esercizio','ExerciseId','MovementId','HistoryKey','Palestra','Attrezzatura','LoadMode','Serie','Kg','Carico_consigliato','Reps','RIR_RPE','Tipo','Velocita','Motivo_consiglio','Note_esercizio']];
   for(const sess of [...state.history].reverse()){
     for(const ex of sess.exercises||[]){
       for(let i=0;i<(ex.sets||[]).length;i++){
         const set=ex.sets[i];if(!set.done)continue;
-        rows.push([sess.id,sess.startedAt,sess.workout,sess.week,sess.durationMin||'',sess.bodyweightKg??'',sess.sessionRpe??'',sess.notes||'',sess.programTitle||'',ex.name,effectiveExerciseId(ex),effectiveMovementId(ex),ex.historyKey||ex.baseName||ex.name,ex.gym||'',ex.equipment||'',ex.loadMode||inferLoadMode(ex),set.label||i+1,set.kg??'',set.recommendedKg??ex.loadSuggestion?.recommendedKg??'',set.reps??'',set.metricValue??'',set.metric||'RIR',set.barSpeed||'',ex.loadSuggestion?.reason||'',ex.notes||'']);
+        rows.push([sess.id,sess.startedAt,sess.workout,sess.week,sess.durationMin||'',sess.bodyweightKg??'',sess.sessionRpe??'',sess.notes||'',sess.programTitle||'',sess.gymName||'',ex.name,effectiveExerciseId(ex),effectiveMovementId(ex),ex.historyKey||ex.baseName||ex.name,ex.gym||'',ex.equipment||'',ex.loadMode||inferLoadMode(ex),set.label||i+1,set.kg??'',set.recommendedKg??ex.loadSuggestion?.recommendedKg??'',set.reps??'',set.metricValue??'',set.metric||'RIR',set.barSpeed||'',ex.loadSuggestion?.reason||'',ex.notes||'']);
       }
     }
   }
@@ -788,7 +837,7 @@ function historyFromCSV(text){
     let sess=map.get(id);
     if(!sess){
       const duration=csvNum(rowGet(row,'Durata_min','Durata','Duration_min'));
-      sess={id,workout,week:csvNum(rowGet(row,'Settimana','Week'))||1,programTitle:rowGet(row,'Programma','Program')||'Storico importato CSV',startedAt,finishedAt:addMinutesIso(startedAt,duration),durationMin:duration,bodyweightKg:csvNum(rowGet(row,'Peso_kg','Peso','Bodyweight_kg')),sessionRpe:csvNum(rowGet(row,'RPE_sessione','Session_RPE')),notes:rowGet(row,'Note_sessione','Session_notes'),exercises:[],progress:100,importedFrom:'csv',importedAt:new Date().toISOString()};map.set(id,sess);
+      sess={id,workout,week:csvNum(rowGet(row,'Settimana','Week'))||1,programTitle:rowGet(row,'Programma','Program')||'Storico importato CSV',startedAt,finishedAt:addMinutesIso(startedAt,duration),durationMin:duration,bodyweightKg:csvNum(rowGet(row,'Peso_kg','Peso','Bodyweight_kg')),sessionRpe:csvNum(rowGet(row,'RPE_sessione','Session_RPE')),notes:rowGet(row,'Note_sessione','Session_notes'),gymName:rowGet(row,'Palestra_sessione','Session_gym'),exercises:[],progress:100,importedFrom:'csv',importedAt:new Date().toISOString()};map.set(id,sess);
     }
     const name=rowGet(row,'Esercizio','Exercise');if(!name)continue;const historyKey=rowGet(row,'HistoryKey','Chiave_storico')||name,exerciseId=rowGet(row,'ExerciseId')||slugId(name);
     let ex=sess.exercises.find(e=>effectiveExerciseId(e)===exerciseId);
@@ -804,11 +853,11 @@ function historyFromCSV(text){
 function historyFingerprint(s){return `${s?.id||''}|${String(s?.startedAt||'').slice(0,19)}|${cleanKey(s?.workout||'')}`;}
 function isBlank(v){return v===undefined||v===null||v==='';}
 function enrichSession(existing,incoming){
-  let changed=false;for(const key of ['finishedAt','durationMin','bodyweightKg','sessionRpe','notes','programTitle','volume','progress']){if(isBlank(existing[key])&&!isBlank(incoming?.[key])){existing[key]=clone(incoming[key]);changed=true;}}
+  let changed=false;for(const key of ['finishedAt','durationMin','bodyweightKg','sessionRpe','notes','programTitle','volume','progress','gymId','gymName']){if(isBlank(existing[key])&&!isBlank(incoming?.[key])){existing[key]=clone(incoming[key]);changed=true;}}
   existing.exercises=Array.isArray(existing.exercises)?existing.exercises:[];
   for(const ix of incoming?.exercises||[]){
     let ex=existing.exercises.find(e=>historyExerciseMatches(e,ix));if(!ex){existing.exercises.push(clone(ix));changed=true;continue;}
-    for(const key of ['historyKey','baseName','exerciseId','movementId','loadDirection','targetReps','targetRir','notes']){if(isBlank(ex[key])&&!isBlank(ix[key])){ex[key]=clone(ix[key]);changed=true;}}
+    for(const key of ['historyKey','baseName','exerciseId','movementId','loadDirection','loadMode','gym','equipment','targetReps','targetRir','notes']){if(isBlank(ex[key])&&!isBlank(ix[key])){ex[key]=clone(ix[key]);changed=true;}}
     if(!ex.loadSuggestion&&ix.loadSuggestion){ex.loadSuggestion=clone(ix.loadSuggestion);changed=true;}
     ex.sets=Array.isArray(ex.sets)?ex.sets:[];
     for(const ist of ix.sets||[]){let st=ex.sets.find(x=>String(x.label??'')===String(ist.label??''));if(!st){ex.sets.push(clone(ist));changed=true;continue;}for(const key of ['recommendedKg','completedAt','metric','metricValue','kg','reps','barSpeed']){if(isBlank(st[key])&&!isBlank(ist[key])){st[key]=clone(ist[key]);changed=true;}}}
@@ -834,7 +883,7 @@ function exportProgram(){
   downloadBlob(blob,`gym-tracker-scheda-${new Date().toISOString().slice(0,10)}.json`);
 }
 function exportPortableProgram(){
-  const payload={type:'gym-tracker-program-package',schemaVersion:4,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),currentWeek:state.currentWeek,preCycleStep:state.preCycleStep,program:clone(activeProgram()),history:clone(state.history),progression:{engine:'smart-load-v4-exercise-memory',benchAutoregulation:'rpe-guard-v1',historyDriven:true,exerciseIdentity:'movement-plus-exercise-plus-gym'},exerciseSettings:clone(state.exerciseSettings||{}),exerciseCatalog:clone(state.exerciseCatalog||{}),weekStartedAt:state.weekStartedAt,settings:{smartLoad:state.settings.smartLoad,showRir:state.settings.showRir}};
+  ensureGymState();const payload={type:'gym-tracker-program-package',schemaVersion:5,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),currentWeek:state.currentWeek,preCycleStep:state.preCycleStep,program:clone(activeProgram()),history:clone(state.history),progression:{engine:'smart-load-v5-gym-profiles',benchAutoregulation:'rpe-guard-v1',historyDriven:true,exerciseIdentity:'program-slot-plus-machine-profile-plus-gym'},exerciseSettings:clone(state.exerciseSettings||{}),exerciseCatalog:clone(state.exerciseCatalog||{}),gymProfiles:clone(state.gymProfiles||[]),activeGymId:state.activeGymId||'',weekStartedAt:state.weekStartedAt,settings:{smartLoad:state.settings.smartLoad,showRir:state.settings.showRir,accessoryDeloadEnabled:state.settings.accessoryDeloadEnabled,accessoryDeloadFactor:state.settings.accessoryDeloadFactor}};
   downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`gym-tracker-pacchetto-portabile-${new Date().toISOString().slice(0,10)}.json`);
 }
 function saveProgramToLibrary(program){
@@ -850,10 +899,50 @@ function resetAll(){ if(!confirm('Cancellare storico, sessione attiva, libreria 
 
 function showModal(html){ let b=document.createElement('div');b.className='modal-backdrop';b.id='modalBackdrop';b.innerHTML=`<div class="modal">${html}</div>`;b.addEventListener('click',e=>{if(e.target===b)closeModal();});document.body.appendChild(b); }
 function closeModal(){ $('#modalBackdrop')?.remove(); }
+
+function currentProgramSlots(){
+  const slots=[],seen=new Set();for(const [workoutName,w] of Object.entries(activeProgram().workouts||{}))for(const raw of w.exercises||[]){const ex=ensureExerciseIdentity(clone(raw));if(!ex||ex.special||Number(ex.sets)<=0)continue;const slot=slugId(ex.exerciseId||ex.name);if(seen.has(slot))continue;seen.add(slot);slots.push({slot,workout:workoutName,name:ex.name,movementId:ex.movementId||inferMovementId(ex.name),equipment:ex.equipment||''});}return slots;
+}
+function setActiveGym(id,resumeWorkout=''){
+  ensureGymState();const gym=(state.gymProfiles||[]).find(g=>g.id===id);if(!gym)return;if(state.currentSession&&state.currentSession.gymId!==id){toast('Termina la sessione prima di cambiare palestra');return;}state.activeGymId=id;state.ui.pendingWorkout='';saveState();if(resumeWorkout){startWorkout(resumeWorkout);return;}render();toast(`Palestra attiva: ${gym.name}`);
+}
+function showNewGymModal(){
+  showModal(`<h2>Nuova palestra</h2><label class="field-block">Nome palestra<input id="newGymName" class="text-input" style="text-align:left" placeholder="es. Borgaro"></label><button class="primary-btn" style="margin-top:12px" onclick="saveNewGym()">Crea palestra</button><button class="secondary-btn" style="margin-top:8px" onclick="closeModal()">Annulla</button>`);
+}
+function saveNewGym(){
+  const name=String($('#newGymName')?.value||'').trim();if(!name){toast('Inserisci il nome della palestra');return;}const gym=ensureGymByName(name);state.activeGymId=state.activeGymId||gym.id;saveState();closeModal();render();toast('Palestra creata');
+}
+function deleteGym(id){
+  if(state.currentSession){toast('Termina la sessione prima di eliminare una palestra');return;}const gym=(state.gymProfiles||[]).find(g=>g.id===id);if(!gym)return;if(!confirm(`Eliminare la palestra "${gym.name}"? Lo storico degli esercizi resta intatto.`))return;state.gymProfiles=state.gymProfiles.filter(g=>g.id!==id);if(state.activeGymId===id)state.activeGymId='';saveState();closeModal();render();
+}
+function editGym(id){
+  ensureGymState();const gym=(state.gymProfiles||[]).find(g=>g.id===id);if(!gym)return;const slots=currentProgramSlots(),groups={};slots.forEach(x=>(groups[x.workout]??=[]).push(x));const html=Object.entries(groups).map(([workout,items])=>`<h3 class="gym-workout-title">${esc(workout)}</h3>${items.map(slot=>{const mappedId=gym.mappings?.[slot.slot]||'',profile=mappedId?catalogEntry(mappedId):null;return `<button class="modal-option" onclick="chooseGymExercise(decodeURIComponent('${encodedArg(gym.id)}'),decodeURIComponent('${encodedArg(slot.slot)}'))"><b>${esc(slot.name)}</b><small>${profile?`${esc(profileDisplayName(profile))}${profile.equipment?` \u00b7 ${esc(profile.equipment)}`:''}`:'Uguale alla scheda / condiviso'}</small></button>`;}).join('')}`).join('');showModal(`<h2>${esc(gym.name)} \u00b7 attrezzi</h2><p class="subtle">Associa solo gli esercizi che in questa palestra usano una macchina diversa. Quelli lasciati su <b>Uguale</b> condividono storico e carichi con le altre palestre.</p><div class="modal-list exercise-picker">${html}</div><button class="danger-btn" style="margin-top:12px" onclick="deleteGym(decodeURIComponent('${encodedArg(gym.id)}'))">Elimina palestra</button><button class="secondary-btn" style="margin-top:8px" onclick="closeModal()">Chiudi</button>`);
+}
+function chooseGymExercise(gymId,slotId){
+  const gym=(state.gymProfiles||[]).find(g=>g.id===gymId),slot=currentProgramSlots().find(s=>s.slot===slotId);if(!gym||!slot)return;const entries=catalogEntries(),same=entries.filter(p=>p.movementId===slot.movementId),seen=new Set(),ordered=[];for(const p of [...same,...entries])if(p?.id&&!seen.has(p.id)){seen.add(p.id);ordered.push(p);}showModal(`<h2>${esc(slot.name)} \u00b7 ${esc(gym.name)}</h2><input class="text-input" style="text-align:left;margin-bottom:10px" placeholder="Cerca macchina o esercizio" oninput="filterGymExerciseOptions(this.value)"><div class="modal-list exercise-picker"><button class="modal-option gym-exercise-option" data-search="uguale condiviso" onclick="clearGymMapping(decodeURIComponent('${encodedArg(gymId)}'),decodeURIComponent('${encodedArg(slotId)}'))"><b>Uguale alla scheda / condiviso</b><small>Stesso esercizio e stesso storico in tutte le palestre</small></button>${ordered.map(p=>`<button class="modal-option gym-exercise-option" data-search="${esc(cleanKey(`${p.name} ${p.gym||''} ${p.equipment||''}`))}" onclick="setGymMapping(decodeURIComponent('${encodedArg(gymId)}'),decodeURIComponent('${encodedArg(slotId)}'),decodeURIComponent('${encodedArg(p.id)}'))"><b>${esc(profileDisplayName(p))}</b><small>${esc(p.equipment||'Attrezzatura non specificata')}</small></button>`).join('')}</div><button class="primary-btn" style="margin-top:10px" onclick="showNewGymMachine(decodeURIComponent('${encodedArg(gymId)}'),decodeURIComponent('${encodedArg(slotId)}'))">+ Nuova macchina per questa palestra</button><button class="secondary-btn" style="margin-top:8px" onclick="editGym(decodeURIComponent('${encodedArg(gymId)}'))">Indietro</button>`);
+}
+function filterGymExerciseOptions(value){ const q=cleanKey(value);document.querySelectorAll('.gym-exercise-option').forEach(el=>el.style.display=!q||String(el.dataset.search||'').includes(q)?'block':'none'); }
+function setGymMapping(gymId,slotId,exerciseId){ const gym=(state.gymProfiles||[]).find(g=>g.id===gymId);if(!gym||!catalogEntry(exerciseId))return;gym.mappings=gym.mappings||{};gym.mappings[slotId]=exerciseId;gym.updatedAt=gymNow();saveState();editGym(gymId); }
+function clearGymMapping(gymId,slotId){ const gym=(state.gymProfiles||[]).find(g=>g.id===gymId);if(!gym)return;if(gym.mappings)delete gym.mappings[slotId];gym.updatedAt=gymNow();saveState();editGym(gymId); }
+function showNewGymMachine(gymId,slotId){
+  const gym=(state.gymProfiles||[]).find(g=>g.id===gymId),slot=currentProgramSlots().find(s=>s.slot===slotId);if(!gym||!slot)return;showModal(`<h2>Nuova macchina \u00b7 ${esc(gym.name)}</h2><div class="form-grid single"><label>Nome esercizio<input id="gymMachineName" class="text-input" value="${esc(slot.name)}"></label><label>Attrezzatura / marca<input id="gymMachineEquipment" class="text-input" placeholder="es. Technogym Chest Press"></label><label>Step carico kg<input id="gymMachineStep" class="num-input" type="number" min="0.25" step="0.25" value="2.5"></label></div><p class="subtle">Questa variante avra un proprio ID e quindi uno storico/carico indipendente.</p><button class="primary-btn" style="margin-top:12px" onclick="saveNewGymMachine(decodeURIComponent('${encodedArg(gymId)}'),decodeURIComponent('${encodedArg(slotId)}'))">Salva e associa</button><button class="secondary-btn" style="margin-top:8px" onclick="chooseGymExercise(decodeURIComponent('${encodedArg(gymId)}'),decodeURIComponent('${encodedArg(slotId)}'))">Annulla</button>`);
+}
+function saveNewGymMachine(gymId,slotId){
+  const gym=(state.gymProfiles||[]).find(g=>g.id===gymId),slot=currentProgramSlots().find(s=>s.slot===slotId);if(!gym||!slot)return;const name=String($('#gymMachineName')?.value||'').trim(),equipment=String($('#gymMachineEquipment')?.value||'').trim(),step=Number(String($('#gymMachineStep')?.value||'').replace(',','.'))||2.5;if(!name){toast('Inserisci il nome della macchina');return;}let id=makeCatalogId(name,gym.name,equipment),base=id,n=2;while(state.exerciseCatalog?.[id])id=`${base}-${n++}`;state.exerciseCatalog=state.exerciseCatalog||{};state.exerciseCatalog[id]={id,name,gym:gym.name,equipment,movementId:slot.movementId,loadDirection:inferLoadDirection({name,equipment}),loadMode:inferLoadMode({name,equipment}),loadStepKg:step,source:'gym-profile',userEdited:true,createdAt:gymNow(),updatedAt:gymNow()};setGymMapping(gymId,slotId,id);
+}
+function setAccessoryDeloadFactor(value){ let n=Number(String(value).replace(',','.'));if(n>1.5)n/=100;n=clamp(n||.9,.5,1);state.settings.accessoryDeloadFactor=n;saveState();render(); }
+function toggleAccessoryDeload(){ state.settings.accessoryDeloadEnabled=!state.settings.accessoryDeloadEnabled;saveState();render(); }
+function renderGyms(){
+  ensureGymState();const active=activeGym(),pending=state.ui.pendingWorkout||'',pct=Math.round((Number(state.settings.accessoryDeloadFactor)||.9)*100);let c=`<section class="card hero"><div class="row between"><span class="badge ${active?'green':'warn'}">PALESTRA ATTIVA</span><span class="badge">${state.gymProfiles.length} configurate</span></div><h1 style="margin-top:12px">${active?esc(active.name):'Seleziona palestra'}</h1><p>Quando cambi palestra, Gym Tracker sostituisce solo gli attrezzi associati. Panca, manubri, bilanciere e gli esercizi lasciati condivisi mantengono lo stesso storico.</p>${pending?`<div class="session-note" style="margin-top:12px">Stai per avviare <b>${esc(pending)}</b>: scegli la palestra.</div>`:''}</section>`;
+  c+=`<div class="gym-profile-list">${state.gymProfiles.map(g=>{const count=Object.keys(g.mappings||{}).length,on=g.id===state.activeGymId;return `<section class="card gym-profile-card ${on?'selected':''}"><div class="row between"><div><h3>${esc(g.name)}</h3><p>${count} associazioni macchina</p></div>${on?'<span class="badge green">ATTIVA</span>':''}</div><div class="gym-card-actions">${on?'':`<button class="primary-btn" onclick="setActiveGym(decodeURIComponent('${encodedArg(g.id)}'),decodeURIComponent('${encodedArg(pending)}'))">${pending?'Usa e avvia':'Usa qui'}</button>`}<button class="secondary-btn" onclick="editGym(decodeURIComponent('${encodedArg(g.id)}'))">Configura attrezzi</button></div></section>`}).join('')}</div>`;
+  c+=`<button class="primary-btn" onclick="showNewGymModal()">+ Nuova palestra</button>`;
+  c+=`<section class="card"><h2 style="margin-top:0">Scarico automatico</h2><div class="setting-row"><div><h4>Ricalcola carichi accessori</h4><p>Se la fase corrente e uno scarico/deload, applica il fattore anche a macchine e complementari.</p></div><button class="toggle ${state.settings.accessoryDeloadEnabled?'on':''}" onclick="toggleAccessoryDeload()"><i></i></button></div><div class="setting-row"><div><h4>Carico in scarico</h4><p>Il valore Smart Load normale viene adattato e arrotondato allo step della macchina.</p></div><div class="gym-percent-control"><input class="num-input" type="number" min="50" max="100" step="1" value="${pct}" onchange="setAccessoryDeloadFactor(this.value)"><span>%</span></div></div></section>`;
+  return shell(c,'Palestre','attrezzi e carichi specifici');
+}
 function showHistoryDetail(id){
   const s=state.history.find(x=>x.id===id);if(!s)return;
   const exhtml=(s.exercises||[]).map(ex=>{const done=(ex.sets||[]).filter(x=>x.done);if(!done.length&&!ex.done)return'';const sg=ex.loadSuggestion;return `<div class="card flat"><b>${esc(ex.name)}</b><div class="subtle" style="margin-top:6px">${done.map(x=>`${x.kg!==''?`${x.kg} kg × `:''}${x.reps||'—'} · ${esc(x.metric||'RIR')} ${x.metricValue??'—'}${x.recommendedKg!==undefined&&x.recommendedKg!==''?` · cons. ${fmtKg(x.recommendedKg)} kg`:''}${x.barSpeed?` · velocità ${esc(benchSpeedLabel(x.barSpeed))}`:''}`).join('<br>')}</div>${sg?.recommendedKg!==undefined&&sg?.recommendedKg!==''?`<div class="history-suggestion">Consiglio registrato: <b>${fmtKg(sg.recommendedKg)} kg</b>${sg.reason?` · ${esc(sg.reason)}`:''}</div>`:''}${ex.notes?`<div class="subtle" style="margin-top:6px">${esc(ex.notes)}</div>`:''}</div>`}).join('');
-  const meta=[fmtDate(s.startedAt),`${s.durationMin||'—'} min`,`${s.volume||0} kg volume`,s.sessionRpe?`RPE sessione ${s.sessionRpe}`:'',s.bodyweightKg?`${fmtKg(s.bodyweightKg)} kg peso`:''].filter(Boolean).join(' · ');
+  const meta=[fmtDate(s.startedAt),s.gymName||'',`${s.durationMin||'—'} min`,`${s.volume||0} kg volume`,s.sessionRpe?`RPE sessione ${s.sessionRpe}`:'',s.bodyweightKg?`${fmtKg(s.bodyweightKg)} kg peso`:''].filter(Boolean).join(' · ');
   showModal(`<h2>${esc(s.workout)} · ${s.preCycleStepAtStart!==null&&s.preCycleStepAtStart!==undefined?`ponte ${Number(s.preCycleStepAtStart)+1}`:`settimana ${s.week}`}</h2><p class="subtle">${meta}</p>${s.notes?`<div class="session-note">${esc(s.notes)}</div>`:''}<div class="modal-list">${exhtml||'<div class="empty">Nessuna serie registrata.</div>'}</div><button class="danger-btn" style="margin-top:12px" onclick="deleteHistory(decodeURIComponent('${encodedArg(s.id)}'))">Elimina sessione</button><button class="secondary-btn" style="margin-top:8px" onclick="closeModal()">Chiudi</button>`);
 }
 function deleteHistory(id){ if(!confirm('Eliminare questa sessione dallo storico?'))return;state.history=state.history.filter(x=>x.id!==id);saveState();closeModal();render(); }
@@ -877,7 +966,7 @@ function benchSummary(data){const singles=data.filter(x=>x.rpe>0),last=singles[s
 
 function nav(){
   const v=state.ui.view==='session'?'home':state.ui.view;
-  const items=[['home','⌂','Oggi'],['program','▤','Scheda'],['history','◷','Storico'],['progress','↗','Progressi'],['settings','⚙','Altro']];
+  const items=[['home','\u2302','Oggi'],['program','\u25a4','Scheda'],['gyms','GYM','Palestre'],['history','\u25f7','Storico'],['progress','\u2197','Progressi'],['settings','\u2699','Altro']];
   return `<nav class="bottom-nav"><div class="bottom-nav-inner">${items.map(([id,ic,l])=>`<button class="nav-btn ${v===id?'active':''}" onclick="setView('${id}')"><b>${ic}</b>${l}</button>`).join('')}</div></nav>`;
 }
 function shell(content,title='Gym Tracker',sub='PPL + Upper / Lower'){
@@ -890,10 +979,10 @@ function preCycleCard(compact=false){
   return `<section class="card ${compact?'flat':''} bridge-card"><div class="row between"><span class="badge warn">${title}</span><span class="badge">${esc(pre.phase||'Preparazione')}</span></div><h3 style="margin:10px 0 6px">${esc(pre.target||'')}</h3><p class="subtle"><b>PUSH · Protocollo A</b> · RPE ${esc(pre.rpe||'--')} · recupero ${esc(pre.rest||'--')} · ${esc(pre.note||'')}</p><p class="subtle" style="margin-top:6px">Il ponte modifica solo la Panca A del PUSH. Nell'UPPER resta sempre attivo il Protocollo B della settimana corrente.</p><div class="row bridge-actions"><button class="chip-btn" onclick="setPreCycleStep(${done+1})">Segna completato</button><button class="chip-btn" onclick="setPreCycleStep(${total})">Salta ponte</button></div></section>`;
 }
 
-function suggestionModeLabel(mode){ return mode==='increase'?'PROGRESSIONE':mode==='decrease'?'RIDUCI FATICA':mode==='recalc'?'RICALCOLO':mode==='initial'?'PARTENZA':'MANTIENI'; }
-function suggestionModeClass(mode){ return mode==='increase'?'up':mode==='decrease'?'down':mode==='recalc'?'recalc':'hold'; }
+function suggestionModeLabel(mode){ return mode==='increase'?'PROGRESSIONE':mode==='decrease'?'RIDUCI FATICA':mode==='recalc'?'RICALCOLO':mode==='deload'?'SCARICO':mode==='initial'?'PARTENZA':'MANTIENI'; }
+function suggestionModeClass(mode){ return mode==='increase'?'up':mode==='decrease'?'down':mode==='recalc'?'recalc':mode==='deload'?'down':'hold'; }
 function workoutLoadTips(workout,limit=4){
-  return (workout?.exercises||[]).filter(ex=>!ex.special&&!Array.isArray(ex.plannedSets)&&Number(ex.sets)>0).map(ex=>({ex,s:suggestedLoad(ex)})).filter(x=>x.s).sort((a,b)=>{const rank={increase:0,decrease:1,recalc:2,maintain:3,initial:4};return (rank[a.s.mode]??9)-(rank[b.s.mode]??9);}).slice(0,limit);
+  return (workout?.exercises||[]).filter(ex=>!ex.special&&!Array.isArray(ex.plannedSets)&&Number(ex.sets)>0).map(ex=>({ex,s:suggestedLoad(ex)})).filter(x=>x.s).sort((a,b)=>{const rank={deload:0,increase:1,decrease:2,recalc:3,maintain:4,initial:5};return (rank[a.s.mode]??9)-(rank[b.s.mode]??9);}).slice(0,limit);
 }
 function renderHome(){
   const next=nextWorkoutName(), wk=currentBenchPlan(), ad=currentAdaptation(), wo=getAdjustedWorkout(next), weeks=programWeekCount();
@@ -907,6 +996,7 @@ function renderHome(){
   }else{
     content+=`<section class="card hero"><div class="row between"><span class="badge">${weeks>1?`SETTIMANA ${state.currentWeek}/${weeks}`:'SCHEDA ATTIVA'}</span><span class="badge green">${imported?'IMPORTATA':'PRONTA'}</span></div><h1 style="margin-top:12px">${esc(programTitle())}</h1><p>${esc(programSubtitle()||'Carichi precompilati automaticamente dallo storico quando disponibili.')}</p>${weekSelector()}<div class="kpi-grid"><div class="kpi"><strong>${programSplit().length}</strong><span>sedute nello split</span></div><div class="kpi"><strong>${state.history.length}</strong><span>sessioni nello storico</span></div><div class="kpi"><strong>AUTO</strong><span>carichi da storico</span></div></div></section>`;
   }
+  const gym=activeGym();content+=`<section class="card gym-active-card"><div class="row between"><div><span class="badge ${gym?'green':'warn'}">PALESTRA</span><div class="gym-active-name">${gym?esc(gym.name):'Seleziona palestra'}</div><div class="subtle">${gym?'Le macchine associate e i relativi carichi verranno applicati automaticamente.':'Scegli la palestra per usare gli attrezzi e i carichi corretti.'}</div></div><button class="chip-btn" onclick="setView('gyms')">${gym?'Cambia':'Scegli'}</button></div></section>`;
   const loadTips=workoutLoadTips(wo,4);
   content+=`<div class="section-title"><h2>Prossima seduta</h2><span>${last?`dopo ${esc(last.workout)}`:'inizio split'}</span></div><section class="card next-card"><div class="row between"><div><div class="next-name">${esc(next)}</div><div class="subtle">${wo.exercises.length} esercizi · circa ${wo.estimatedMin} min</div></div><span class="badge green">PRONTA</span></div>${loadTips.length?`<div class="load-preview"><div class="load-preview-title">Carichi suggeriti dallo storico</div>${loadTips.map(({ex,s})=>`<div class="load-preview-row"><div><b>${esc(ex.name)}</b><small>${esc(s.reason)}</small></div><span class="load-value">${fmtKg(s.next)} kg</span></div>`).join('')}</div>`:''}<button class="primary-btn" onclick="startWorkout(decodeURIComponent('${encodedArg(next)}'))">Avvia ${esc(next)}</button></section>`;
   content+=`<div class="section-title"><h2>Ultimi 7 giorni</h2><span>${streak?`${streak} sett. consecutive`:'inizia a registrare'}</span></div><section class="card"><div class="stat-grid three"><div class="stat-card"><strong>${stats.sessions}</strong><span>sedute</span></div><div class="stat-card"><strong>${stats.sets}</strong><span>serie completate</span></div><div class="stat-card"><strong>${stats.volume?`${Math.round(stats.volume/100)/10} t`:'—'}</strong><span>volume registrato</span></div></div><div class="calendar-strip" aria-label="Attività ultimi 28 giorni">${cal.map(d=>`<span class="calendar-day level-${Math.min(3,d.count)}" title="${fmtDateShort(d.date.toISOString())}: ${d.count} sedute"></span>`).join('')}</div><div class="subtle">Ogni quadratino rappresenta un giorno; l’intensità indica quante sessioni hai registrato.</div></section>`;
@@ -925,7 +1015,7 @@ function renderProgram(){
 function renderSession(){
   const ss=state.currentSession; if(!ss){state.ui.view='home';saveState();return renderHome();}
   const p=sessionProgress(), lastDone=latestCompletedSet();
-  const started=fmtDate(ss.startedAt); let c=`<section class="card"><div class="row between"><div><span class="badge green">${esc(ss.workout)} · ${ss.preCycleStepAtStart!==null&&ss.preCycleStepAtStart!==undefined?`PONTE ${Number(ss.preCycleStepAtStart)+1}`:`W${ss.week}`}</span><h1 style="margin:8px 0 2px;font-size:26px">Allenamento</h1><div class="subtle">iniziato ${started}</div></div><button class="icon-btn" onclick="setView('home')" aria-label="Torna alla home">×</button></div><div class="session-kpis" style="margin-top:14px"><div class="kpi"><strong id="elapsedTime">00:00</strong><span>tempo</span></div><div class="kpi"><strong>${p.done}/${p.total}</strong><span>blocchi</span></div><div class="kpi"><strong>${p.pct}%</strong><span>completato</span></div></div><div class="progress-shell" style="margin-top:12px"><div class="progress-bar" style="width:${p.pct}%"></div></div>${lastDone?`<button class="undo-btn" onclick="undoLastCompletedSet()">↶ Annulla ultima serie · ${esc(lastDone.ex.name)}</button>`:''}</section>`;
+  const started=fmtDate(ss.startedAt); let c=`<section class="card"><div class="row between"><div><span class="badge green">${esc(ss.workout)} · ${ss.preCycleStepAtStart!==null&&ss.preCycleStepAtStart!==undefined?`PONTE ${Number(ss.preCycleStepAtStart)+1}`:`W${ss.week}`}</span><h1 style="margin:8px 0 2px;font-size:26px">Allenamento</h1><div class="subtle">iniziato ${started}${ss.gymName?` \u00b7 ${esc(ss.gymName)}`:''}</div></div><button class="icon-btn" onclick="setView('home')" aria-label="Torna alla home">×</button></div><div class="session-kpis" style="margin-top:14px"><div class="kpi"><strong id="elapsedTime">00:00</strong><span>tempo</span></div><div class="kpi"><strong>${p.done}/${p.total}</strong><span>blocchi</span></div><div class="kpi"><strong>${p.pct}%</strong><span>completato</span></div></div><div class="progress-shell" style="margin-top:12px"><div class="progress-bar" style="width:${p.pct}%"></div></div>${lastDone?`<button class="undo-btn" onclick="undoLastCompletedSet()">↶ Annulla ultima serie · ${esc(lastDone.ex.name)}</button>`:''}</section>`;
   ss.exercises.forEach((ex,i)=>{const open=state.ui.openExercise===i;const exDone=ex.sets?.length?ex.sets.every(s=>s.done):ex.done;const sugg=ex.loadSuggestion||null;const prev=lastExerciseData(ex);const prevSets=(prev?.sets||[]).filter(s=>s.done);const showMetric=state.settings.showRir||!!ex.special;const step=loadStepFor(ex);
     c+=`<section class="card exercise-card ${exDone?'done':''} ${open?'current':''}"><div class="exercise-head" onclick="openExercise(${i})"><div><h3>${exDone?'✓ ':''}${esc(ex.name)}</h3><p>${esc(ex.equipment||'')} ${ex.replacement?`· sostituzione`:''}</p></div><span class="badge ${exDone?'green':''}">${ex.special?'PANCA':ex.sets?.length?`${ex.sets.filter(s=>s.done).length}/${ex.sets.length}`:'WARM'}</span></div>`;
     if(open){c+=`<div class="exercise-body"><div class="exercise-meta"><span class="meta-pill">Target ${esc(ex.special?benchTargetText(ex.special,ss.week):`${ex.sets||''} × ${ex.reps}`)}</span>${ex.restSec?`<span class="meta-pill">Rec ${fmtTime(ex.restSec)}</span>`:''}${showMetric&&ex.rir&&ex.rir!=='—'?`<span class="meta-pill">RIR ${esc(ex.rir)}</span>`:''}</div>`;
@@ -944,7 +1034,7 @@ function renderSession(){
   c+=`<section class="card add-exercise-card"><button class="primary-btn" onclick="showAddExerciseToSession()">+ Aggiungi esercizio alla sessione</button><p class="subtle" style="margin:8px 0 0">Puoi aggiungere liberamente un esercizio fuori scheda: carichi e storico verranno mantenuti nel database.</p></section>`;
   c+=`<section class="card"><div class="section-title summary-title"><h2>Riepilogo sessione</h2><span>opzionale</span></div><div class="session-summary-grid"><label><span>Peso corporeo</span><div class="input-suffix"><input class="text-input" inputmode="decimal" type="number" step="0.1" value="${esc(ss.bodyweightKg??'')}" oninput="updateSessionMeta('bodyweightKg',this.value)" placeholder="—"><i>kg</i></div></label><label><span>RPE sessione</span><select class="select-input" onchange="updateSessionMeta('sessionRpe',this.value)"><option value="">—</option>${[1,2,3,4,5,6,7,8,9,10].map(v=>`<option value="${v}" ${Number(ss.sessionRpe)===v?'selected':''}>${v}</option>`).join('')}</select></label></div><textarea class="notes-input" placeholder="Note generali: energie, sonno, fastidi, tecnica…" oninput="updateSessionMeta('notes',this.value)">${esc(ss.notes||'')}</textarea></section>`;
   c+=`<section class="card"><button class="primary-btn" onclick="finishWorkout()">Termina e salva allenamento</button><button class="danger-btn" style="margin-top:8px" onclick="discardWorkout()">Scarta sessione</button></section>`;
-  return shell(c,ss.workout,`settimana ${ss.week} · sessione attiva`);
+  return shell(c,ss.workout,`settimana ${ss.week}${ss.gymName?` \u00b7 ${ss.gymName}`:''} \u00b7 sessione attiva`);
 }
 function benchTargetText(type,w){const pre=currentPreCycleStepFor(type);if(pre)return pre.target||'';const p=activeProgram().benchPlan?.[w-1];return type==='bench_push'?`${p?.pushTop||''} + ${p?.pushBackoff||''}`:`${p?.upperWork||''}`;}
 
@@ -954,7 +1044,7 @@ function renderHistory(){
   let c=`<section class="card"><div class="row between"><div><h2 style="margin:0">Storico</h2><div class="subtle"><span id="historyVisibleCount">${base.length}</span> di ${state.history.length} allenamenti</div></div><div class="history-actions"><button class="chip-btn" onclick="triggerCSVImport()">Importa</button><button class="chip-btn" onclick="exportCSV()">CSV</button></div></div><div class="history-filter-grid"><input class="text-input" value="${esc(state.ui.historyQuery||'')}" oninput="filterHistoryCards(this.value)" placeholder="Cerca esercizio, workout, note…" aria-label="Cerca nello storico"><select class="select-input" onchange="setHistoryWorkout(this.value)" aria-label="Filtra workout">${workouts.map(w=>`<option value="${esc(w)}" ${state.ui.historyWorkout===w?'selected':''}>${w==='ALL'?'Tutti i workout':esc(w)}</option>`).join('')}</select></div></section>`;
   if(!state.history.length)c+=`<div class="empty"><b>Nessun allenamento ancora</b>Le sessioni concluse compariranno qui.</div>`;
   else if(!base.length)c+=`<div class="empty"><b>Nessuna sessione nel filtro</b>Scegli un altro workout.</div>`;
-  else c+=base.map(s=>{const search=cleanKey([s.workout,s.notes,...(s.exercises||[]).flatMap(e=>[e.name,e.notes])].join(' '));return `<section class="card history-card" data-search="${esc(search)}" onclick="showHistoryDetail(decodeURIComponent('${encodedArg(s.id)}'))"><div class="row between"><h3>${esc(s.workout)} · ${s.preCycleStepAtStart!==null&&s.preCycleStepAtStart!==undefined?`PONTE ${Number(s.preCycleStepAtStart)+1}`:`W${s.week}`}</h3><span class="badge ${s.progress===100?'green':'warn'}">${s.progress||0}%</span></div><div class="history-meta"><span>${fmtDate(s.startedAt)}</span><span>· ${s.durationMin||'—'} min</span><span>· ${s.volume||0} kg volume</span>${s.sessionRpe?`<span>· RPE ${s.sessionRpe}</span>`:''}</div>${s.notes?`<div class="history-note">${esc(s.notes)}</div>`:''}<div class="history-exercises">${(s.exercises||[]).filter(e=>(e.sets||[]).some(x=>x.done)).slice(0,4).map(e=>`<div>${esc(e.name)} <span>· ${(e.sets||[]).filter(x=>x.done).map(x=>`${x.kg||'—'}×${x.reps}`).join(' / ')}</span></div>`).join('')}</div></section>`}).join('');
+  else c+=base.map(s=>{const search=cleanKey([s.workout,s.notes,...(s.exercises||[]).flatMap(e=>[e.name,e.notes])].join(' '));return `<section class="card history-card" data-search="${esc(search)}" onclick="showHistoryDetail(decodeURIComponent('${encodedArg(s.id)}'))"><div class="row between"><h3>${esc(s.workout)} · ${s.preCycleStepAtStart!==null&&s.preCycleStepAtStart!==undefined?`PONTE ${Number(s.preCycleStepAtStart)+1}`:`W${s.week}`}</h3><span class="badge ${s.progress===100?'green':'warn'}">${s.progress||0}%</span></div><div class="history-meta"><span>${fmtDate(s.startedAt)}</span>${s.gymName?`<span>· ${esc(s.gymName)}</span>`:''}<span>· ${s.durationMin||'—'} min</span><span>· ${s.volume||0} kg volume</span>${s.sessionRpe?`<span>· RPE ${s.sessionRpe}</span>`:''}</div>${s.notes?`<div class="history-note">${esc(s.notes)}</div>`:''}<div class="history-exercises">${(s.exercises||[]).filter(e=>(e.sets||[]).some(x=>x.done)).slice(0,4).map(e=>`<div>${esc(e.name)} <span>· ${(e.sets||[]).filter(x=>x.done).map(x=>`${x.kg||'—'}×${x.reps}`).join(' / ')}</span></div>`).join('')}</div></section>`}).join('');
   setTimeout(()=>filterHistoryCards(state.ui.historyQuery||''),0);return shell(c,'Storico','sessioni e dati');
 }
 function allExerciseNames(){ const set=new Set(); let hasBench=false; Object.values(activeProgram().workouts||{}).forEach(w=>w.exercises.forEach(raw=>{const e=ensureExerciseIdentity(raw);if(e.sets||e.special)set.add(e.name);if(isBenchExercise(e))hasBench=true;})); state.history.forEach(sess=>(sess.exercises||[]).forEach(e=>{set.add(e.name);if(isBenchExercise(e))hasBench=true;})); const names=[...set].sort((a,b)=>a.localeCompare(b,'it'));if(hasBench)names.unshift(BENCH_GLOBAL_NAME);return names; }
@@ -984,7 +1074,8 @@ function drawProgressChart(data,metric=state.ui.progressMetric||'e1rm'){
 
 function renderSettings(){
   const p=activeProgram(), imported=!!state.activeProgram, lib=state.programLibrary||[];
-  let c=`<section class="card"><h2 style="margin-top:0">Durante l'allenamento</h2>${settingToggle('smartLoad','Carichi consigliati intelligenti','Usa storico, range reps e RIR/RPE per proporre il prossimo carico.')}${settingToggle('autoTimer','Timer automatico','Parte quando confermi una serie.')}${settingToggle('vibrate','Vibrazione','Segnale al termine del recupero.')}${settingToggle('wakeLock','Schermo sempre acceso','Se supportato dal browser, evita lo spegnimento durante la sessione.')}${settingToggle('showRir','Mostra RIR / RPE','Permette di modificare la percezione dello sforzo serie per serie.')}</section>`;
+  let c=`<section class="card"><h2 style="margin-top:0">Durante l'allenamento</h2>${settingToggle('smartLoad','Carichi consigliati intelligenti','Usa storico, range reps e RIR/RPE per proporre il prossimo carico.')}${settingToggle('autoTimer','Timer automatico','Parte quando confermi una serie.')}${settingToggle('vibrate','Vibrazione','Segnale al termine del recupero.')}${settingToggle('wakeLock','Schermo sempre acceso','Se supportato dal browser, evita lo spegnimento durante la sessione.')}${settingToggle('showRir','Mostra RIR / RPE','Permette di modificare la percezione dello sforzo serie per serie.')}</section>`
+  ensureGymState();const gym=activeGym(),deloadPct=Math.round((Number(state.settings.accessoryDeloadFactor)||.9)*100);c+=`<section class="card"><div class="row between"><div><h2 style="margin:0">Palestre e scarico</h2><div class="subtle">${gym?`Attiva: ${esc(gym.name)}`:'Nessuna palestra selezionata'}</div></div><button class="chip-btn" onclick="setView('gyms')">Apri</button></div><div class="setting-row"><div><h4>Scarico automatico complementari</h4><p>Durante una fase di scarico ricalcola i carichi di macchine e accessori.</p></div><button class="toggle ${state.settings.accessoryDeloadEnabled?'on':''}" onclick="toggleAccessoryDeload()"><i></i></button></div><div class="setting-row"><div><h4>Intensit\u00e0 in scarico</h4><p>Percentuale del carico Smart Load prima dello scarico.</p></div><div class="gym-percent-control"><input class="num-input" type="number" min="50" max="100" step="1" value="${deloadPct}" onchange="setAccessoryDeloadFactor(this.value)"><span>%</span></div></div></section>`;
   c+=`<section class="card"><div class="row between"><div><h2 style="margin:0">Scheda allenamento</h2><div class="subtle">${esc(programTitle())} · ${imported?'personalizzata':'originale'}</div></div><span class="badge ${imported?'green':''}">${imported?'CUSTOM':'BASE'}</span></div><p class="subtle">Il pacchetto portabile contiene scheda + storico: reimportandolo su un altro dispositivo ritrovi progressioni e carichi consigliati. Il JSON semplice esporta solo la struttura della scheda.</p><div class="action-stack"><button class="primary-btn" onclick="exportPortableProgram()">Esporta scheda + storico</button><button class="secondary-btn" onclick="exportProgram()">Esporta solo scheda</button><button class="secondary-btn" onclick="triggerProgramImport()">Importa scheda / pacchetto</button>${imported?`<button class="secondary-btn" onclick="saveActiveProgramToLibrary()">Salva scheda in libreria</button><button class="secondary-btn" onclick="restoreDefaultProgram()">Torna alla scheda originale</button>`:''}</div></section>`;
   c+=`<section class="card"><div class="row between"><div><h2 style="margin:0">Libreria schede</h2><div class="subtle">${lib.length} schede salvate · lo storico è unico e resta separato</div></div><span class="badge">LIBRERIA</span></div>${lib.length?`<div class="program-library">${lib.map(item=>`<div class="program-library-row"><div><b>${esc(item.title)}</b><small>salvata ${fmtDateShort(item.savedAt)}</small></div><div><button onclick="activateLibraryProgram(decodeURIComponent('${encodedArg(item.id)}'))">Attiva</button><button class="danger-mini" onclick="removeLibraryProgram(decodeURIComponent('${encodedArg(item.id)}'))">×</button></div></div>`).join('')}</div>`:`<div class="empty compact"><b>Nessuna scheda salvata</b>Importa una scheda o salva quella attiva.</div>`}</section>`;
   c+=`<section class="card"><h2 style="margin-top:0">Storico e backup</h2><div class="data-status"><span><b>${state.history.length}</b><small>sessioni</small></span><span><b>${catalogEntries().length}</b><small>esercizi DB</small></span><span><b>v${APP_VERSION}</b><small>formato dati</small></span></div><div class="action-stack"><button class="secondary-btn" onclick="exportCSV()">Esporta storico CSV</button><button class="secondary-btn" onclick="triggerCSVImport()">Importa / unisci CSV storico</button><button class="secondary-btn" onclick="exportBackup()">Esporta backup completo JSON</button><button class="secondary-btn" onclick="triggerImport()">Ripristina backup completo</button><button class="danger-btn" onclick="resetAll()">Azzera tutti i dati</button></div><p class="subtle" style="margin-bottom:0">L'import CSV è non distruttivo: le sessioni già presenti vengono riconosciute e saltate.</p></section>`;
@@ -993,7 +1084,7 @@ function renderSettings(){
   const stepExercises=[];for(const w of Object.values(p.workouts||{}))for(const raw of w.exercises||[]){const ex=ensureExerciseIdentity(raw);if(!ex.special&&Number(ex.sets)>0&&!stepExercises.some(x=>effectiveExerciseId(x)===effectiveExerciseId(ex)))stepExercises.push(ex);}c+=`<section class="card"><div class="row between"><div><h2 style="margin:0">Step carichi personalizzati</h2><div class="subtle">Imposta lo scatto reale di ogni macchina/manubrio. Se lasci vuoto, l’app usa lo storico e il tipo di attrezzatura.</div></div><span class="badge">SMART LOAD</span></div><div class="load-step-list">${stepExercises.map(ex=>{const id=effectiveExerciseId(ex),custom=state.exerciseSettings?.[id]?.loadStepKg;return `<div class="load-step-row"><div><b>${esc(ex.name)}</b><small>automatico: ${fmtKg(inferredLoadStepFor(ex))} kg</small></div><div class="load-step-control"><input class="num-input" type="number" inputmode="decimal" step="0.5" min="0.5" value="${custom??''}" placeholder="auto" onchange="setExerciseLoadStep(decodeURIComponent('${encodedArg(id)}'),this.value)">${custom?`<button onclick="resetExerciseLoadStep(decodeURIComponent('${encodedArg(id)}'))">×</button>`:''}</div></div>`}).join('')}</div></section>`;
   const eq=Array.isArray(p.equipment)?p.equipment:[];c+=`<section class="card"><div class="row between"><div><h2 style="margin:0">Attrezzatura palestra</h2><div class="subtle">${eq.length} voci disponibili</div></div><span class="badge green">GYM</span></div><div style="margin-top:10px">${eq.map(x=>`<div class="setting-row"><div><h4>${esc(x)}</h4></div><span class="green">✓</span></div>`).join('')}</div></section>`;
   c+=`<section class="card install-banner"><h2 style="margin-top:0">Installazione</h2><p class="subtle">La versione PWA funziona offline dopo il primo caricamento quando viene pubblicata tramite HTTPS.</p><button class="primary-btn" onclick="installApp()">Istruzioni installazione</button></section>`;
-  c+=`<div class="app-version">Gym Tracker v${APP_VERSION} · Exercise Memory · Smart Load 4 · local-first</div>`;
+  c+=`<div class="app-version">Gym Tracker v${APP_VERSION} · Gym Profiles · Smart Load 5 · local-first</div>`;
   return shell(c,'Altro','schede, storico e backup');
 }
 function settingToggle(k,title,desc){ return `<div class="setting-row"><div><h4>${title}</h4><p>${desc}</p></div><button class="toggle ${state.settings[k]?'on':''}" onclick="toggleSetting('${k}')" aria-label="${title}"><i></i></button></div>`; }
@@ -1002,7 +1093,7 @@ function render(){
   const app=$('#app'); if(!app)return;
   try{
     let html='';
-    switch(state.ui.view){case'program':html=renderProgram();break;case'history':html=renderHistory();break;case'progress':html=renderProgress();break;case'settings':html=renderSettings();break;case'session':html=renderSession();break;default:html=renderHome();}
+    switch(state.ui.view){case'program':html=renderProgram();break;case'gyms':html=renderGyms();break;case'history':html=renderHistory();break;case'progress':html=renderProgress();break;case'settings':html=renderSettings();break;case'session':html=renderSession();break;default:html=renderHome();}
     app.innerHTML=html; renderTimer(); updateElapsed();
   }catch(e){
     console.error('Errore di rendering', e);
@@ -1023,13 +1114,14 @@ $('#importInput')?.addEventListener('change',async e=>{
     if(!incoming.history||!Array.isArray(incoming.history))throw new Error('history');
     if(!confirm(`Ripristinare il backup con ${incoming.history.length} sessioni? I dati attuali verranno sostituiti.`))return;
     state={...clone(defaultState),...incoming,version:APP_VERSION,activeProgram:incoming.activeProgram?.workouts?incoming.activeProgram:null,programLibrary:Array.isArray(incoming.programLibrary)?incoming.programLibrary.filter(x=>x&&x.program?.workouts):[],history:incoming.history,ui:{...defaultState.ui,...(incoming.ui||{})},settings:{...defaultState.settings,...(incoming.settings||{})},exerciseSettings:{...(incoming.exerciseSettings||{})},exerciseCatalog:{...(incoming.exerciseCatalog||{})}};
-    state.history.sort((a,b)=>new Date(b.startedAt||0)-new Date(a.startedAt||0));state.currentWeek=clamp(Number(state.currentWeek)||1,1,programWeekCount());syncExerciseCatalogFromKnownData();seedPersonalReferences();saveState();render();toast('Backup ripristinato');
+    if(!state.activeGymId&&(incoming.activeGym?.id||incoming.activeGym))state.activeGymId=String(incoming.activeGym?.id||incoming.activeGym||'');
+    state.history.sort((a,b)=>new Date(b.startedAt||0)-new Date(a.startedAt||0));state.currentWeek=clamp(Number(state.currentWeek)||1,1,programWeekCount());syncExerciseCatalogFromKnownData();seedPersonalReferences();ensureGymState();saveState();render();toast('Backup ripristinato');
   }catch{toast('File backup non valido');}
   e.target.value='';
 });
 $('#csvInput')?.addEventListener('change',async e=>{
   const file=e.target.files?.[0];if(!file)return;
-  try{const incoming=historyFromCSV(await file.text()), result=mergeHistory(incoming);syncExerciseCatalogFromKnownData();seedPersonalReferences();saveState();render();toast(result.added||result.updated?`${result.added} nuove · ${result.updated} aggiornate · ${result.skipped} già complete`:`Nessuna nuova sessione · ${result.skipped} già presenti`);}catch(err){console.warn(err);toast('CSV storico non riconosciuto');}
+  try{const incoming=historyFromCSV(await file.text()), result=mergeHistory(incoming);syncExerciseCatalogFromKnownData();seedPersonalReferences();state.gymProfilesMigratedAt=null;ensureGymState();saveState();render();toast(result.added||result.updated?`${result.added} nuove · ${result.updated} aggiornate · ${result.skipped} già complete`:`Nessuna nuova sessione · ${result.skipped} già presenti`);}catch(err){console.warn(err);toast('CSV storico non riconosciuto');}
   e.target.value='';
 });
 $('#programInput')?.addEventListener('change',async e=>{
@@ -1041,14 +1133,14 @@ $('#programInput')?.addEventListener('change',async e=>{
     const historyText=incomingHistory.length?` Il pacchetto contiene anche ${incomingHistory.length} sessioni, che verranno unite senza duplicati.`:` Lo storico attuale (${state.history.length} sessioni) resterà intatto.`;
     if(!confirm(`Importare la scheda “${program.title}” (${workouts} sedute, ${exercises} esercizi)?${historyText}`))return;
     state.activeProgram=saveProgramToLibrary(program);let merged={added:0,skipped:0,updated:0};if(incomingHistory.length)merged=mergeHistory(incomingHistory);
-    if(isPackage&&parsed.settings?.smartLoad!==undefined)state.settings.smartLoad=!!parsed.settings.smartLoad;if(isPackage&&parsed.exerciseSettings&&typeof parsed.exerciseSettings==='object')state.exerciseSettings={...state.exerciseSettings,...parsed.exerciseSettings};if(isPackage&&parsed.exerciseCatalog&&typeof parsed.exerciseCatalog==='object')state.exerciseCatalog={...state.exerciseCatalog,...parsed.exerciseCatalog};
-    state.version=APP_VERSION;state.currentWeek=clamp(Number(parsed.currentWeek||program.startWeek)||1,1,programWeekCount());state.preCycleStep=clamp(Number(parsed.preCycleStep)||0,0,preCycleCount());state.weekStartedAt=parsed.weekStartedAt||new Date().toISOString();state.pendingWeekAdvance=null;state.ui.view='program';state.ui.openExercise=0;syncExerciseCatalogFromKnownData();seedPersonalReferences();saveState();render();toast(incomingHistory.length?`Scheda importata · ${merged.added} nuove · ${merged.updated} aggiornate`:'Nuova scheda importata');
+    if(isPackage&&parsed.settings?.smartLoad!==undefined)state.settings.smartLoad=!!parsed.settings.smartLoad;if(isPackage&&parsed.settings?.showRir!==undefined)state.settings.showRir=!!parsed.settings.showRir;if(isPackage&&parsed.settings?.accessoryDeloadEnabled!==undefined)state.settings.accessoryDeloadEnabled=!!parsed.settings.accessoryDeloadEnabled;if(isPackage&&Number(parsed.settings?.accessoryDeloadFactor)>0)state.settings.accessoryDeloadFactor=Number(parsed.settings.accessoryDeloadFactor);if(isPackage&&parsed.exerciseSettings&&typeof parsed.exerciseSettings==='object')state.exerciseSettings={...state.exerciseSettings,...parsed.exerciseSettings};if(isPackage&&parsed.exerciseCatalog&&typeof parsed.exerciseCatalog==='object')state.exerciseCatalog={...state.exerciseCatalog,...parsed.exerciseCatalog};if(isPackage&&Array.isArray(parsed.gymProfiles))state.gymProfiles=clone(parsed.gymProfiles);if(isPackage&&typeof parsed.activeGymId==='string')state.activeGymId=parsed.activeGymId;
+    state.version=APP_VERSION;state.currentWeek=clamp(Number(parsed.currentWeek||program.startWeek)||1,1,programWeekCount());state.preCycleStep=clamp(Number(parsed.preCycleStep)||0,0,preCycleCount());state.weekStartedAt=parsed.weekStartedAt||new Date().toISOString();state.pendingWeekAdvance=null;state.ui.view='program';state.ui.openExercise=0;syncExerciseCatalogFromKnownData();seedPersonalReferences();ensureGymState();saveState();render();toast(incomingHistory.length?`Scheda importata · ${merged.added} nuove · ${merged.updated} aggiornate`:'Nuova scheda importata');
   }catch(err){console.warn(err);toast(err?.message==='sessione'?'Termina la sessione prima di cambiare scheda':'File scheda non valido');}
   e.target.value='';
 });
 if('serviceWorker' in navigator && location.protocol!=='file:') window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(r=>r.update()).catch(()=>{}));
-try{const requested=new URLSearchParams(location.search).get('view');if(['home','program','history','progress','settings'].includes(requested))state.ui.view=requested;}catch(e){}
+try{const requested=new URLSearchParams(location.search).get('view');if(['home','program','gyms','history','progress','settings'].includes(requested))state.ui.view=requested;}catch(e){}
 const repairedProtocolSession=repairInvalidUpperBridgeSession();
-syncExerciseCatalogFromKnownData();seedPersonalReferences();saveState();
+syncExerciseCatalogFromKnownData();seedPersonalReferences();ensureGymState();saveState();
 setInterval(()=>{renderTimer();updateElapsed();},500);
 render();

@@ -1135,6 +1135,7 @@ const DEFAULT_PROGRAM = {
       "step": 2,
       "appliesTo": "bench_push",
       "phase": "Ponte - scarico",
+      "accessoryLoadFactor": 0.9,
       "target": "107,5-110 kg - 2x4 con fermo 2 s",
       "rpe": "5-6",
       "rest": "3 min",
