@@ -48,13 +48,13 @@ jobs:
         shell: bash
         run: |
           test -f android/app/build/outputs/apk/debug/app-debug.apk
-          cp android/app/build/outputs/apk/debug/app-debug.apk GymTracker-v9.2.apk
-          ls -lh GymTracker-v9.2.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk GymTracker-v9.2.1.apk
+          ls -lh GymTracker-v9.2.1.apk
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v7
         with:
-          path: GymTracker-v9.2.apk
+          path: GymTracker-v9.2.1.apk
           archive: false
           if-no-files-found: error
           retention-days: 30
