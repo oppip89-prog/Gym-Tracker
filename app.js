@@ -1,4 +1,4 @@
-/* Gym Tracker v9.1 base - Gym Profiles + machine-specific history; Adaptive Coach in v9_features.js */
+/* Gym Tracker v9.2 base - Gym Profiles + machine-specific history; Adaptive Coach in v9_features.js */
 /* APP_VERSION arriva da version.js, caricato prima di questo file */
 const STORAGE_KEY = 'gym_tracker_ppl_upper_lower_v1';
 const $ = (sel) => document.querySelector(sel);
@@ -750,13 +750,15 @@ function addTimer(sec){ if(!state.timer) return; state.timer.end+=sec*1000; stat
 function skipTimer(){ state.timer=null;timerFinishedHandled=false;saveState();renderTimer(); }
 function renderTimer(){
   const el=$('#timerDock'); if(!el) return;
-  if(!state.timer){el.classList.add('hidden');return;}
+  if(!state.timer){el.classList.add('hidden');el.classList.remove('ending');el.innerHTML='';return;}
   const left=Math.ceil((state.timer.end-Date.now())/1000);
   if(left<=0){
     if(!timerFinishedHandled){ timerFinishedHandled=true; if(state.settings.vibrate && navigator.vibrate) navigator.vibrate([180,80,180]); beep(); toast('Recupero terminato'); }
-    state.timer=null; saveState(); el.classList.add('hidden'); return;
+    state.timer=null; saveState(); el.classList.add('hidden'); el.classList.remove('ending'); el.innerHTML=''; return;
   }
-  el.classList.remove('hidden'); el.innerHTML=`<div><div class="timer-label">Recupero · ${esc(state.timer.label||'')}</div><div class="timer-time codeish">${fmtTime(left)}</div></div><div class="timer-actions"><button onclick="addTimer(30)">+30s</button><button onclick="skipTimer()">Salta</button></div>`;
+  const total=Math.max(1,Number(state.timer.total)||left),pct=clamp((left/total)*100,0,100);
+  el.classList.remove('hidden'); el.classList.toggle('ending',left<=10);
+  el.innerHTML=`<div class="timer-main"><div class="timer-label"><b>RECUPERO</b><span>${esc(state.timer.label||'')}</span></div><div class="timer-time codeish">${fmtTime(left)}</div><div class="timer-progress" aria-hidden="true"><i style="width:${pct}%"></i></div></div><div class="timer-actions"><button onclick="addTimer(30)" aria-label="Aggiungi 30 secondi">+30</button><button class="timer-skip" onclick="skipTimer()">Salta</button></div>`;
 }
 function beep(){
   try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;const ctx=new C();const o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=880;g.gain.setValueAtTime(.04,ctx.currentTime);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.35);o.connect(g).connect(ctx.destination);o.start();o.stop(ctx.currentTime+.35);}catch(e){}
@@ -970,7 +972,7 @@ function nav(){
   return `<nav class="bottom-nav"><div class="bottom-nav-inner">${items.map(([id,ic,l])=>`<button class="nav-btn ${v===id?'active':''}" onclick="setView('${id}')"><b>${ic}</b>${l}</button>`).join('')}</div></nav>`;
 }
 function shell(content,title='Gym Tracker',sub='PPL + Upper / Lower'){
-  return `<div class="app-shell"><header class="topbar"><div class="topbar-row"><div class="brand">${esc(title)}<small>${esc(sub)}</small></div>${state.currentSession&&state.ui.view!=='session'?'<button class="chip-btn" onclick="resumeWorkout()">Riprendi</button>':''}</div></header><main class="content">${state.ui.view==='session'?'':pendingWeekAdvanceCard()}${content}</main>${nav()}</div>`;
+  return `<div class="app-shell ${state.ui.view==='session'?'session-mode':''}"><header class="topbar"><div class="topbar-row"><div class="brand">${esc(title)}<small>${esc(sub)}</small></div>${state.currentSession&&state.ui.view!=='session'?'<button class="chip-btn" onclick="resumeWorkout()">Riprendi</button>':''}</div></header><div id="timerDock" class="timer-dock hidden" aria-live="polite"></div><main class="content">${state.ui.view==='session'?'':pendingWeekAdvanceCard()}${content}</main>${nav()}</div>`;
 }
 function weekSelector(){ const count=programWeekCount(); if(count<=1)return''; return `<div class="week-grid">${Array.from({length:count},(_,i)=>i+1).map(w=>`<button class="week-btn ${state.currentWeek===w?'active':''}" onclick="setWeek(${w})">${w}</button>`).join('')}</div>`; }
 function preCycleCard(compact=false){

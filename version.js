@@ -1,3 +1,3 @@
 /* Fonte unica della versione app: usata sia da app.js sia dal service worker. */
-const APP_VERSION = 9.1;
-const CACHE_NAME = `gym-tracker-personal-v${APP_VERSION}-adaptive-coach-smartload6-1`;
+const APP_VERSION = 9.2;
+const CACHE_NAME = `gym-tracker-personal-v${APP_VERSION}-adaptive-coach-smartload6-1-ui-refresh`;

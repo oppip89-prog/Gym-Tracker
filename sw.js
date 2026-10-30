@@ -1,6 +1,6 @@
 importScripts('./version.js');
 const CACHE=CACHE_NAME;
-const CORE=['./','./index.html','./styles.css?v=91','./version.js?v=91','./data.js?v=91','./history_seed.js?v=91','./app.js?v=91','./v9_features.js?v=91','./manifest.webmanifest?v=91','./icon-192.png','./icon-512.png'];
+const CORE=['./','./index.html','./styles.css?v=92','./version.js?v=92','./data.js?v=92','./history_seed.js?v=92','./app.js?v=92','./v9_features.js?v=92','./manifest.webmanifest?v=92','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(CORE)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
