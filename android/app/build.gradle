@@ -1,0 +1,54 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'it.omcr.gymtracker'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'it.omcr.gymtracker'
+        minSdk 26
+        targetSdk 35
+        versionCode 90201
+        versionName '9.2.1'
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            assets.srcDir "$buildDir/generated/web-assets"
+        }
+    }
+}
+
+// Copia i file web correnti della root dentro l'APK prima della compilazione.
+tasks.register('syncWebAssets', Copy) {
+    from rootProject.projectDir
+    include 'index.html'
+    include 'app.js'
+    include 'v9_features.js'
+    include 'data.js'
+    include 'history_seed.js'
+    include 'styles.css'
+    include 'version.js'
+    include 'sw.js'
+    include 'manifest.webmanifest'
+    include 'icon-192.png'
+    include 'icon-512.png'
+    into "$buildDir/generated/web-assets/www"
+}
+
+preBuild.dependsOn syncWebAssets
