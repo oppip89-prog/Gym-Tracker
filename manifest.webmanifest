@@ -1,7 +1,7 @@
 {
-  "name": "Gym Tracker v9.2 - Adaptive Coach + Smart Load 6.1",
+  "name": "Gym Tracker v9.2.1 - Adaptive Coach + Smart Load 6.1",
   "short_name": "Gym Tracker",
-  "description": "Tracker palestra local-first con Smart Load 6.1, Adaptive Coach, timer sticky in alto, UI sessione migliorata, warm-up automatico, readiness, recupero muscolare, storico e schede portabili.",
+  "description": "Tracker palestra local-first con panca W5 corretta, autoregolazione con priorita alla singola piu recente, timer sticky in alto, Smart Load 6.1, readiness, recupero muscolare, storico e schede portabili.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
