@@ -1,0 +1,69 @@
+/* Gym Tracker 9.4 - libreria, editor schede e tecniche avanzate */
+.builder-promo { border-color: rgba(126,231,135,.36) !important; background: linear-gradient(140deg,rgba(45,107,70,.2),rgba(22,31,43,.24)); }
+.builder-promo p { max-width: 560px; margin: 6px 0 0; }
+.builder-template-grid { display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:9px; margin-top:16px; }
+.builder-template-grid button { background:rgba(126,231,135,.08);color:#e4f7e9;border:1px solid rgba(126,231,135,.3);border-radius:12px;min-height:42px;padding:10px 5px;font-weight:650;cursor:pointer; }
+.builder-template-grid button:first-child { grid-column:span 2;background:rgba(126,231,135,.17); }
+.builder-hero h1 { font-size:24px; margin:6px 0; }
+.builder-hero .subtle { margin:6px 0; }
+.builder-meta { display:grid; grid-template-columns: 1.5fr .7fr;gap:10px;margin-top:16px; }
+.builder-meta label, .field-block, .builder-fields label, .builder-tech-label { display:flex; flex-direction:column; gap:6px; font-size:12px;color:#aab7c6; }
+.builder-meta input, .field-block input, .builder-fields input, .builder-tech-label input, .builder-tech-label select { width:100%;max-width:100%;min-width:0;box-sizing:border-box; }
+.field-block { margin-top:12px; }
+.builder-workout { padding:14px; }
+.builder-workout > .row { gap:8px; }
+.builder-toggle { background:transparent; color:inherit; border:0; cursor:pointer; text-align:left;display:flex;flex:1;flex-direction:column;gap:4px;min-height:36px; }
+.builder-toggle small { color:#9fb2c6; }
+.builder-top-actions { display:flex;gap:5px; }
+.builder-top-actions button,.builder-ex-actions button { border:1px solid #3b4757; border-radius:9px; background:#202d3b;color:#dce9f5;min-height:34px;min-width:34px;padding:4px 10px; }
+.builder-top-actions button:last-child,.builder-ex-actions .danger-mini { color:#ffaaaa; }
+.builder-exercises { display:flex;flex-direction:column;gap:10px;margin:12px 0; }
+.builder-ex { padding:12px; border-radius:12px; border:1px solid #2c3b49; background:rgba(6,14,22,.32); }
+.builder-ex-title { display:flex;justify-content:space-between; gap:10px;align-items:start;font-size:14px; }
+.builder-ex > small { color:#95a8b9;display:block;margin:4px 0 12px; }
+.builder-fields { display:grid;grid-template-columns: .8fr 1.25fr .7fr .8fr;gap:8px; }
+.builder-tech-label { margin-top:10px; }
+.builder-tech-label input { max-width:100px; }
+.builder-ex-actions { display:flex;gap:8px;justify-content:flex-end;margin-top:12px; }
+.catalog-filter-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 12px; }
+.catalog-row { width:100%; min-height:60px; }
+.catalog-row small { line-height:1.4; }
+.exercise-picker { max-height:min(54vh,520px);overflow-y:auto; }
+.intensity-card { margin:12px 0 10px; border:1px solid #42546b;background:rgba(31,46,63,.5);border-radius:12px;padding:12px; }
+.intensity-heading { display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px; }
+.intensity-heading b { font-size:14px; }
+.intensity-hint {margin:9px 0 0;line-height:1.5;}
+.intensity-config { display:flex;align-items:center;gap:8px;margin-top:12px; flex-wrap:wrap; font-size:13px; }
+.intensity-config .num-input { width:65px; }
+.intensity-list { margin:12px 0 0; }
+.intensity-subheading {font-size:13px;color:#dbe9ff;margin-bottom:9px;font-weight:650;}
+.intensity-row { display:grid;grid-template-columns: minmax(49px,.9fr) minmax(0,1.4fr) minmax(0,1.3fr) 38px 28px;gap:7px; align-items:center;margin:7px 0; }
+.intensity-row > b { font-size:12px; }
+.intensity-row label { display:flex;align-items:center;gap:4px;min-width:0; }
+.intensity-row input { width:100%; min-width:0;box-sizing:border-box; }
+.intensity-row label small {font-size:10px;color:#a2b1c2;}
+.intensity-row .set-btn { width:38px;height:36px; }
+.intensity-remove { border:0;background:transparent;color:#ed9b9b;font-size:22px; }
+.intensity-add { margin-top:7px; }
+.history-intensity {font-size:12px;line-height:1.6;margin-top:9px;border-top:1px solid #344153;padding-top:8px;color:#bcebc5;}
+.history-intensity div { color:#dde9f5;margin-top:3px; }
+.evidence-item {border:1px solid #354356;border-radius:10px;padding:10px;margin:7px 0;}
+.evidence-item a {color:#9be4b0;text-decoration:underline;text-underline-offset:3px;}
+.evidence-item .subtle {margin-top:5px;}
+@media(min-width:750px){ .builder-template-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }.builder-template-grid button:first-child {grid-column:span 1;} }
+@media(max-width:410px){ .builder-meta {grid-template-columns:1fr 100px;} .builder-fields {grid-template-columns:repeat(2,minmax(0,1fr));} .catalog-filter-grid {grid-template-columns:1fr;} .intensity-row{grid-template-columns:minmax(40px,.7fr) minmax(0,1fr) minmax(0,1fr) 30px 22px;gap:4px}.intensity-row .set-btn{width:30px;height:34px}.intensity-row label{flex-direction:column;gap:0}.intensity-row label small{font-size:9px}.intensity-card{padding:8px}.builder-workout{padding:11px} }
+
+/* v9.4.0: inventario macchine ed editor panca */
+.v94-inventory{margin-top:16px;padding:12px 0;border-top:1px solid #38424f}
+.v94-inventory h3{margin:0}
+.v94-equipment-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.v94-equipment-item b{display:block;font-size:14px}.v94-equipment-item small{display:block;color:#9eaabc;margin-top:3px}
+.v94-equipment-item button{background:#263544;border:0;border-radius:8px;color:#e8eff5;font-size:18px;min-width:33px;min-height:33px}
+.v94-overview-row{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.v94-overview-row span{color:#9eaabc;font-size:12px}.v94-overview-row .chip-btn{min-width:54px}
+.v94-bench-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 15px}
+.v94-bench-fields label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:#abb8c8}
+.v94-bench-fields input{width:100%;box-sizing:border-box}
+.v94-bench-card{border-left:3px solid #33c8a0}
+.v94-bench-card h2{margin:0 0 6px}.v94-bench-card .chip-btn{flex-shrink:0}
+@media(max-width:375px){.v94-overview-row{flex-wrap:wrap}.v94-bench-fields{gap:6px}}
