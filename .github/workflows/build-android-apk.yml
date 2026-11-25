@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Gym Tracker Phone + Galaxy Watch 6
 
 on:
   push:
@@ -9,77 +9,66 @@ permissions:
   contents: read
 
 jobs:
-  build-apk:
-    name: Gym Tracker Android
+  android:
     runs-on: ubuntu-24.04
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Verify repository consistency
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f build.gradle
-          test -f settings.gradle
-          test -f android/app/build.gradle
-          test -f android/app/src/main/AndroidManifest.xml
-          test -f app.js
-          test -f data.js
-          test -f version.js
-          test -f exercise_library.js
-          test -f v10_upgrade.js
-          test -f fitactive_v94.js
-          test -f styles_upgrade.css
-          grep -q "com.android.tools.build:gradle:8.7.3" build.gradle
-          grep -q "versionName '9.4.0'" android/app/build.gradle
-          grep -q "APP_VERSION = '9.4.0'" version.js
-          grep -q "Gym Tracker v9.4.0" app.js
-          grep -q '"pushTop": "147,5 kg x 1 @8"' data.js
-          echo "Repository v9.4.0 coerente."
-
-      - name: Setup Java 17
-        uses: actions/setup-java@v5
+      - name: Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
+      - name: Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
           log-accepted-android-sdk-licenses: false
 
-      - name: Install Android SDK 35
-        shell: bash
-        run: |
-          set -euo pipefail
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
-          sdkmanager --list_installed | grep -E "platforms;android-35|build-tools;35.0.0|platform-tools" || true
+      - name: Android SDK 35
+        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
 
-      - name: Setup Gradle 8.9
-        uses: gradle/actions/setup-gradle@v6
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify source and protocol tests
+        run: |
+          set -eu
+          node --check app.js
+          node --check watch_bridge.js
+          node tests/watch-bridge.test.cjs
+          node tests/backup-integrity.test.cjs
+          node tests/bootstrap-persistence.test.cjs
+          grep -q "APP_VERSION = '9.5.1'" version.js
+          grep -q "include ':wear'" settings.gradle
+          grep -q "include 'watch_bridge.js'" android/app/build.gradle
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
-        shell: bash
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Build both debug APKs in one job with one signing key
+        run: gradle :app:assembleDebug :wear:assembleDebug --no-daemon --stacktrace
 
-      - name: Prepare APK
-        shell: bash
+      - name: Prepare installer package
         run: |
-          set -euo pipefail
-          test -f android/app/build/outputs/apk/debug/app-debug.apk
-          cp android/app/build/outputs/apk/debug/app-debug.apk GymTracker-v9.4.0.apk
-          ls -lh GymTracker-v9.4.0.apk
+          set -eu
+          mkdir -p release
+          cp android/app/build/outputs/apk/debug/app-debug.apk release/GymTracker-Phone-v9.5.1.apk
+          cp wear/build/outputs/apk/debug/wear-debug.apk release/GymTracker-Watch-v9.5.1.apk
+          cp GUIDA_GALAXY_WATCH6.md release/
+          cp REPORT_BACKUP_2026-11-25.md release/
+          ls -lh release/
 
-      - name: Upload installable APK
-        uses: actions/upload-artifact@v7
+      - name: Download Phone and Galaxy Watch APKs
+        uses: actions/upload-artifact@v4
         with:
-          name: GymTracker-v9.4.0.apk
-          path: GymTracker-v9.4.0.apk
-          archive: false
-          if-no-files-found: error
+          name: GymTracker-v9.5.1-GalaxyWatch6
+          path: release/
           retention-days: 30
+          if-no-files-found: error
