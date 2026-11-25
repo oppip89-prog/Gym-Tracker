@@ -180,7 +180,7 @@ public class WatchActivity extends Activity implements SensorEventListener {
     private Button button(String name, int bg, int fg, Runnable click) {
         Button b = new Button(this);
         b.setText(name);
-        b.setTextAllCaps(false);
+        b.setAllCaps(false);
         b.setTextColor(fg);
         b.setTextSize(15);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
