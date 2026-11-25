@@ -1,0 +1,29 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'it.omcr.gymtracker.wear'
+    compileSdk 35
+
+    defaultConfig {
+        // Must match phone applicationId and signing certificate for Wear Data Layer.
+        applicationId 'it.omcr.gymtracker'
+        minSdk 30
+        targetSdk 35
+        versionCode 90501
+        versionName '9.5.1'
+    }
+
+    buildTypes {
+        debug { minifyEnabled false }
+        release { minifyEnabled false }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.android.gms:play-services-wearable:20.0.1'
+}
