@@ -27,8 +27,8 @@ jobs:
           packages: 'platform-tools'
           log-accepted-android-sdk-licenses: false
 
-      - name: Android SDK 35
-        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Android SDK 36
+        run: sdkmanager --install 'platforms;android-36' 'build-tools;35.0.0'
 
       - name: Node.js 22
         uses: actions/setup-node@v4
@@ -40,17 +40,33 @@ jobs:
           set -eu
           node --check app.js
           node --check watch_bridge.js
+          node --check health_v98.js
+          node tests/health-v98.test.cjs
           node tests/watch-bridge.test.cjs
           node tests/backup-integrity.test.cjs
           node tests/bootstrap-persistence.test.cjs
-          grep -q "APP_VERSION = '9.5.1'" version.js
+          grep -q "APP_VERSION = '9.8.0'" version.js
           grep -q "include ':wear'" settings.gradle
           grep -q "include 'watch_bridge.js'" android/app/build.gradle
 
-      - name: Gradle 8.9
+      - name: Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.11.1'
+
+      - name: Restore optional persistent debug signing key
+        env:
+          GYMTRACKER_KEY: ${{ secrets.GYMTRACKER_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -eu
+          mkdir -p "$HOME/.android"
+          if [ -n "$GYMTRACKER_KEY" ]; then
+            printf '%s' "$GYMTRACKER_KEY" | base64 --decode > "$HOME/.android/debug.keystore"
+            chmod 600 "$HOME/.android/debug.keystore"
+            keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+          else
+            echo '::warning::No persistent signing key configured. APKs may not update previous builds in place.'
+          fi
 
       - name: Build both debug APKs in one job with one signing key
         run: gradle :app:assembleDebug :wear:assembleDebug --no-daemon --stacktrace
@@ -59,16 +75,21 @@ jobs:
         run: |
           set -eu
           mkdir -p release
-          cp android/app/build/outputs/apk/debug/app-debug.apk release/GymTracker-Phone-v9.5.1.apk
-          cp wear/build/outputs/apk/debug/wear-debug.apk release/GymTracker-Watch-v9.5.1.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk release/GymTracker-Phone-v9.8.0.apk
+          cp wear/build/outputs/apk/debug/wear-debug.apk release/GymTracker-Watch-v9.8.0.apk
+          cp GUIDA_V98.md release/
           cp GUIDA_GALAXY_WATCH6.md release/
           cp REPORT_BACKUP_2026-11-25.md release/
+          SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$SIGNER" verify --print-certs release/GymTracker-Phone-v9.8.0.apk > release/phone-signature.txt
+          "$SIGNER" verify --print-certs release/GymTracker-Watch-v9.8.0.apk > release/watch-signature.txt
+          diff <(grep 'certificate SHA-256 digest:' release/phone-signature.txt) <(grep 'certificate SHA-256 digest:' release/watch-signature.txt)
           ls -lh release/
 
       - name: Download Phone and Galaxy Watch APKs
         uses: actions/upload-artifact@v4
         with:
-          name: GymTracker-v9.5.1-GalaxyWatch6
+          name: GymTracker-v9.8.0-GalaxyWatch6
           path: release/
           retention-days: 30
           if-no-files-found: error
