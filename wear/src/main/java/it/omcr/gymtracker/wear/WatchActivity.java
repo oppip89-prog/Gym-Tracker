@@ -327,7 +327,7 @@ public class WatchActivity extends Activity implements SensorEventListener {
         gap(parent, 3);
         line(parent, ex.optString("name", "Esercizio"), 17, WHITE, true);
         gap(parent, 3);
-        line(parent, "Serie " + (position.si + 1) + "/" + (allSets == null ? 0 : allSets.length)
+        line(parent, "Serie " + (position.si + 1) + "/" + (allSets == null ? 0 : allSets.length())
                 + "  -  " + ex.optString("equipment", ""), 11, SECONDARY, false);
         gap(parent, 12);
 
