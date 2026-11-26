@@ -1,0 +1,37 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace 'it.omcr.gymtracker.wear'
+    compileSdk 36
+
+    defaultConfig {
+        // Must match phone applicationId and signing certificate for Wear Data Layer.
+        applicationId 'it.omcr.gymtracker'
+        minSdk 30
+        targetSdk 36
+        versionCode 90802
+        versionName '9.8.2'
+    }
+
+    buildTypes {
+        debug { minifyEnabled false }
+        release { minifyEnabled false }
+    }
+
+    kotlinOptions { jvmTarget = "17" }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation "androidx.wear:wear-ongoing:1.0.0"
+    implementation "androidx.core:core:1.15.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
+    implementation 'com.google.android.gms:play-services-wearable:20.0.1'
+    implementation 'androidx.health:health-services-client:1.0.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.9.0'
+}
