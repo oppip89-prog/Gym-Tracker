@@ -46,9 +46,10 @@ jobs:
           node tests/health-v983-native.test.cjs
           node tests/watch-bridge.test.cjs
           node tests/watch-v981.test.cjs
+          node tests/watch-v984.test.cjs
           node tests/backup-integrity.test.cjs
           node tests/bootstrap-persistence.test.cjs
-          grep -q "APP_VERSION = '9.8.3'" version.js
+          grep -q "APP_VERSION = '9.8.5'" version.js
           grep -q "include ':wear'" settings.gradle
           grep -q "include 'watch_bridge.js'" android/app/build.gradle
 
@@ -78,24 +79,26 @@ jobs:
         run: |
           set -eu
           mkdir -p release
-          cp android/app/build/outputs/apk/debug/app-debug.apk release/GymTracker-Phone-v9.8.3.apk
-          cp wear/build/outputs/apk/debug/wear-debug.apk release/GymTracker-Watch-v9.8.3.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk release/GymTracker-Phone-v9.8.5.apk
+          cp wear/build/outputs/apk/debug/wear-debug.apk release/GymTracker-Watch-v9.8.5.apk
           cp GUIDA_V98.md release/
           cp GUIDA_V981.md release/
           cp GUIDA_V982.md release/
           cp GUIDA_V983.md release/
+          cp GUIDA_V984.md release/
+          cp GUIDA_V985.md release/
           cp GUIDA_GALAXY_WATCH6.md release/
           cp REPORT_BACKUP_2026-11-25.md release/
           SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          "$SIGNER" verify --print-certs release/GymTracker-Phone-v9.8.3.apk > release/phone-signature.txt
-          "$SIGNER" verify --print-certs release/GymTracker-Watch-v9.8.3.apk > release/watch-signature.txt
+          "$SIGNER" verify --print-certs release/GymTracker-Phone-v9.8.5.apk > release/phone-signature.txt
+          "$SIGNER" verify --print-certs release/GymTracker-Watch-v9.8.5.apk > release/watch-signature.txt
           diff <(grep 'certificate SHA-256 digest:' release/phone-signature.txt) <(grep 'certificate SHA-256 digest:' release/watch-signature.txt)
           ls -lh release/
 
       - name: Download Phone and Galaxy Watch APKs
         uses: actions/upload-artifact@v4
         with:
-          name: GymTracker-v9.8.3-GalaxyWatch6
+          name: GymTracker-v9.8.5-GalaxyWatch6
           path: release/
           retention-days: 30
           if-no-files-found: error
