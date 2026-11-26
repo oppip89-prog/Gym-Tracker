@@ -187,12 +187,15 @@
   }
   function processQueue() {
     if(!native()||!enabled())return;
-    const now=Date.now();
+    let now=Date.now();
     if(checking){if(now-checking.at<30000)return;checking=null;}
     if(inFlight){if(now-inFlight.at<90000)return;inFlight=null;}
     const candidates=(state.history||[]).filter(s=>s.finishedAt && ['pending','permission','retry'].includes(s.healthV98?.autoExport?.status));
     if(!candidates.length)return;
     collectNativeResults(candidates);
+    // Native bridge calls can take time and set nextAt to a newer timestamp.
+    // Refresh the clock before checking whether a fallback export is due.
+    now=Date.now();
     if(!status || !status.available || !exportPermissions.every(x=>status.granted?.includes(x))) {
       // Status read is safe and does not trigger the permission dialog.
       if(now-lastStatusCheck>=30000){lastStatusCheck=now;call('status');}
