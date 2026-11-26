@@ -1,11 +1,13 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const now=Date.now(), start=now-600000, end=now-30000;
+let clock=now;
+class TestDate extends Date { constructor(...args){super(...(args.length?args:[clock]));} static now(){return clock;} }
 const old={id:'old-session',startedAt:new Date(start-86400000).toISOString(),finishedAt:new Date(end-86400000).toISOString(),exercises:[]};
 const s={id:'new-session',workout:'PUSH',startedAt:new Date(start).toISOString(),finishedAt:new Date(end).toISOString(),exercises:[{sets:[{done:true,kg:50,reps:10}]}]};
 const state={currentSession:null,history:[s,old],settings:{},ui:{view:'history'}},calls=[],jobs={},toggles=[];
-const bridge={healthAction:(action,payload)=>calls.push({action,payload:JSON.parse(payload)}),queueHealthExport:(raw,revision)=>{const j=JSON.parse(raw);jobs[j.id]={revision,state:'scheduled',payload:j};return true;},getHealthExportResult:id=>JSON.stringify(jobs[id]||{}),forgetHealthExport:(id,revision)=>{if(jobs[id]?.revision===revision)delete jobs[id];},setHealthAutoExport:v=>toggles.push(v)};
-const ctx={state,window:{AndroidBridge:bridge},console,setInterval:()=>0,setTimeout:()=>0,renderSettings:()=>'<main></main>',renderHome:()=>'<main></main>',renderSession:()=>'<main></main>',suggestedLoadForSet:()=>({mode:'increase',load:40,next:42.5}),saveState:()=>{},render:()=>{},toast:()=>{},document:{querySelector:()=>null},totalSessionVolume:()=>500,esc:s=>String(s),fmtDate:s=>s};
+const bridge={healthAction:(action,payload)=>calls.push({action,payload:JSON.parse(payload)}),queueHealthExport:(raw,revision)=>{const j=JSON.parse(raw);jobs[j.id]={revision,state:'scheduled',payload:j};return true;},getHealthExportResult:id=>{clock+=5;return JSON.stringify(jobs[id]||{});},forgetHealthExport:(id,revision)=>{if(jobs[id]?.revision===revision)delete jobs[id];},setHealthAutoExport:v=>toggles.push(v)};
+const ctx={state,Date:TestDate,window:{AndroidBridge:bridge},console,setInterval:()=>0,setTimeout:()=>0,renderSettings:()=>'<main></main>',renderHome:()=>'<main></main>',renderSession:()=>'<main></main>',suggestedLoadForSet:()=>({mode:'increase',load:40,next:42.5}),saveState:()=>{},render:()=>{},toast:()=>{},document:{querySelector:()=>null},totalSessionVolume:()=>500,esc:s=>String(s),fmtDate:s=>s};
 vm.createContext(ctx);vm.runInContext(fs.readFileSync('health_v98.js','utf8'),ctx);
 const api=ctx.window.GymHealth;
 const allow=['android.permission.health.READ_EXERCISE','android.permission.health.WRITE_EXERCISE'];
