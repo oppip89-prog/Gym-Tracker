@@ -41,6 +41,7 @@ jobs:
           node --check app.js
           node --check watch_bridge.js
           node --check health_v98.js
+          node --check personal_v99.js
           node tests/health-v98.test.cjs
           node tests/health-v982-auto.test.cjs
           node tests/health-v983-native.test.cjs
@@ -49,7 +50,9 @@ jobs:
           node tests/watch-v984.test.cjs
           node tests/backup-integrity.test.cjs
           node tests/bootstrap-persistence.test.cjs
-          grep -q "APP_VERSION = '9.8.5'" version.js
+          node tests/personal-v990.test.cjs
+          node tests/personal-v991.test.cjs
+          grep -q "APP_VERSION = '9.9.1'" version.js
           grep -q "include ':wear'" settings.gradle
           grep -q "include 'watch_bridge.js'" android/app/build.gradle
 
@@ -79,26 +82,19 @@ jobs:
         run: |
           set -eu
           mkdir -p release
-          cp android/app/build/outputs/apk/debug/app-debug.apk release/GymTracker-Phone-v9.8.5.apk
-          cp wear/build/outputs/apk/debug/wear-debug.apk release/GymTracker-Watch-v9.8.5.apk
-          cp GUIDA_V98.md release/
-          cp GUIDA_V981.md release/
-          cp GUIDA_V982.md release/
-          cp GUIDA_V983.md release/
-          cp GUIDA_V984.md release/
-          cp GUIDA_V985.md release/
-          cp GUIDA_GALAXY_WATCH6.md release/
-          cp REPORT_BACKUP_2026-11-25.md release/
+          cp android/app/build/outputs/apk/debug/app-debug.apk release/GymTracker-Phone-v9.9.1.apk
+          cp wear/build/outputs/apk/debug/wear-debug.apk release/GymTracker-Watch-v9.9.1.apk
+          cp GUIDA_V990.md GUIDA_V991.md GUIDA_GALAXY_WATCH6.md GUIDA_FIRMA.md release/
           SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          "$SIGNER" verify --print-certs release/GymTracker-Phone-v9.8.5.apk > release/phone-signature.txt
-          "$SIGNER" verify --print-certs release/GymTracker-Watch-v9.8.5.apk > release/watch-signature.txt
+          "$SIGNER" verify --print-certs release/GymTracker-Phone-v9.9.1.apk > release/phone-signature.txt
+          "$SIGNER" verify --print-certs release/GymTracker-Watch-v9.9.1.apk > release/watch-signature.txt
           diff <(grep 'certificate SHA-256 digest:' release/phone-signature.txt) <(grep 'certificate SHA-256 digest:' release/watch-signature.txt)
           ls -lh release/
 
       - name: Download Phone and Galaxy Watch APKs
         uses: actions/upload-artifact@v4
         with:
-          name: GymTracker-v9.8.5-GalaxyWatch6
+          name: GymTracker-v9.9.1-GalaxyWatch6
           path: release/
           retention-days: 30
           if-no-files-found: error
