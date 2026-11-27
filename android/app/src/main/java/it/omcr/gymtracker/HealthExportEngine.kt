@@ -52,10 +52,11 @@ internal object HealthExportEngine {
         val own = others.firstOrNull { it.metadata.dataOrigin.packageName == context.packageName && it.metadata.clientRecordId == recordId }
         if (own == null && others.isNotEmpty()) return out.put("status", "overlap").put("error", "Esiste gia un allenamento sovrapposto in Connessione Salute: esportazione non eseguita per evitare duplicati.")
         val zone = ZoneId.systemDefault(); val revision = j.optLong("version",System.currentTimeMillis()).coerceAtLeast(1L)
-        val notes = j.optString("notes").take(4000)
+        val title = j.optString("workout").trim().take(100).ifBlank { "GymTracker" }
+        val notes = ("Allenamento: " + title + "\n" + j.optString("notes")).take(4000)
         // Upsert only our own record. The same session ID prevents duplicate exports on retry.
-        if (own == null || own.notes != notes) {
-            c.insertRecords(listOf(ExerciseSessionRecord(startTime = from, startZoneOffset = zone.rules.getOffset(from), endTime = to, endZoneOffset = zone.rules.getOffset(to), metadata = Metadata.activelyRecorded(device = Device(type = Device.TYPE_PHONE), clientRecordId = recordId, clientRecordVersion = revision), exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING, title = "GymTracker " + j.optString("workout").take(100), notes = notes)))
+        if (own == null || own.notes != notes || own.title != title) {
+            c.insertRecords(listOf(ExerciseSessionRecord(startTime = from, startZoneOffset = zone.rules.getOffset(from), endTime = to, endZoneOffset = zone.rules.getOffset(to), metadata = Metadata.activelyRecorded(device = Device(type = Device.TYPE_PHONE), clientRecordId = recordId, clientRecordVersion = revision), exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING, title = title, notes = notes)))
         }
         val verified = read<ExerciseSessionRecord>(c, scanFrom, scanTo).firstOrNull { it.metadata.dataOrigin.packageName == context.packageName && it.metadata.clientRecordId == recordId }
             ?: return out.put("status","retry").put("error","Scrittura inviata, ma la seduta non e ancora leggibile in Connessione Salute. Riprovo automaticamente.")
