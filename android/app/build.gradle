@@ -1,0 +1,77 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace 'it.omcr.gymtracker'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'it.omcr.gymtracker'
+        minSdk 26
+        targetSdk 35
+        versionCode 90902
+        versionName '9.9.2'
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    kotlinOptions { jvmTarget = "17" }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            assets.srcDir "$buildDir/generated/web-assets"
+        }
+    }
+}
+
+// Copia i file web correnti della root dentro l'APK prima della compilazione.
+tasks.register('syncWebAssets', Sync) {
+    from rootProject.projectDir
+    include 'index.html'
+    include 'app.js'
+    include 'v9_features.js'
+    include 'exercise_library.js'
+    include 'v10_upgrade.js'
+    include 'fitactive_v94.js'
+    include 'watch_bridge.js'
+    include 'health_v98.js'
+    include 'data.js'
+    include 'personal_v99.js'
+    include 'training_engine.js'
+    include 'training_v992.js'
+    include 'styles_training.css'
+    include 'styles_personal.css'
+    include 'styles.css'
+    include 'styles_upgrade.css'
+    include 'version.js'
+    include 'sw.js'
+    include 'manifest.webmanifest'
+    include 'icon-192.png'
+    include 'icon-512.png'
+    into "$buildDir/generated/web-assets/www"
+}
+
+preBuild.dependsOn syncWebAssets
+
+// Same app ID and signing certificate as the Wear OS companion are required.
+dependencies {
+    implementation "androidx.wear:wear-remote-interactions:1.0.0"
+    implementation "androidx.work:work-runtime-ktx:2.10.1"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
+    implementation 'com.google.android.gms:play-services-wearable:20.0.1'
+    implementation 'androidx.activity:activity:1.10.1'
+    implementation 'androidx.health.connect:connect-client:1.1.0'
+}
